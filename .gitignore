@@ -48,3 +48,4 @@ final-test.js
 *-debug.json
 test-topics-result.json
 CACHE_OPTIMIZATION_REPORT.md
+.vercel

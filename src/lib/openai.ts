@@ -2,10 +2,16 @@ import OpenAI from 'openai';
 import { Topic, Script, FilterOptions } from '@/types';
 import { mockTopics, mockScripts, tonePresets } from './mock-data';
 
-// OpenAI client initialization (server-side only)
-const openai = typeof window === 'undefined' ? new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-}) : null;
+// OpenAI client initialization (lazy, server-side only)
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI | null {
+  if (typeof window !== 'undefined') return null;
+  if (!process.env.OPENAI_API_KEY) return null;
+  if (!_openai) {
+    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return _openai;
+}
 
 // Configuration
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
@@ -53,7 +59,7 @@ async function searchWebTopics(): Promise<string> {
  */
 export async function generateTopics(filters: FilterOptions): Promise<Topic[]> {
   // Fallback to mock data if OpenAI is not available (client-side or missing API key)
-  if (!openai || !process.env.OPENAI_API_KEY) {
+  if (!getOpenAI() || !process.env.OPENAI_API_KEY) {
     if (DEBUG) console.warn('OpenAI API not available, using mock data');
     return getMockTopicsWithFilters(filters);
   }
@@ -115,7 +121,7 @@ ${searchResults}
 フィルター条件に基づいて適切にフィルタリングし、多様なカテゴリから選んでください。
       `;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await getOpenAI()!.chat.completions.create({
         model: OPENAI_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -175,7 +181,7 @@ export async function generateScript(
   tone: string
 ): Promise<Script> {
   // Fallback to mock data if OpenAI is not available
-  if (!openai || !process.env.OPENAI_API_KEY) {
+  if (!getOpenAI() || !process.env.OPENAI_API_KEY) {
     if (DEBUG) console.warn('OpenAI API not available, using mock data');
     return getMockScript(topicId, duration, tension, tone);
   }
@@ -242,7 +248,7 @@ ${isIncident ? `
 上記のトピックに基づいて、指定された条件で台本を作成してください。
       `;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await getOpenAI()!.chat.completions.create({
         model: OPENAI_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -435,5 +441,5 @@ export async function getUsageStats(): Promise<{
  * Check if OpenAI API is properly configured
  */
 export function isOpenAIConfigured(): boolean {
-  return !!(openai && process.env.OPENAI_API_KEY);
+  return !!(getOpenAI() && process.env.OPENAI_API_KEY);
 }
