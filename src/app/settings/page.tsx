@@ -33,7 +33,7 @@ export default function SettingsPage() {
           channelName: '',
           specialties: [],
           ngWords: ['死ね', '殺す', 'クズ', 'ゴミ'],
-          dailyLimit: 50,
+          dailyLimit: 30,
           preferredTone: 'フレンドリー',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
@@ -312,22 +312,6 @@ export default function SettingsPage() {
                 追加
               </button>
             </div>
-          </div>
-
-          {/* 1日の上限設定 */}
-          <div className="mt-6">
-            <label className="block text-sm font-medium text-gray-200 mb-2">
-              1日の生成上限回数
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="200"
-              value={profile.dailyLimit}
-              onChange={(e) => setProfile({ ...profile, dailyLimit: parseInt(e.target.value) || 50 })}
-              className="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-sm text-gray-400 mt-1">推奨: 20-50回</p>
           </div>
 
           <div className="mt-6">
