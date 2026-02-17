@@ -40,6 +40,7 @@ export interface FilterOptions {
 // API リクエスト・レスポンス型
 export interface GenerateTopicsRequest {
   filters: FilterOptions;
+  previousTitles?: string[]; // 前回生成したタイトル（重複防止用）
 }
 
 export interface GenerateTopicsResponse {

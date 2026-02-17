@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { filters } = body;
+    const { filters, previousTitles } = body;
 
     // フィルター条件の検証
     if (!Array.isArray(filters.categories)) {
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     let result;
     
     try {
-      result = await generateTopicsWithWebSearch(filters);
+      result = await generateTopicsWithWebSearch(filters, previousTitles);
     } catch (webSearchError) {
       // WebSearch APIが失敗した場合、mock dataにfallback
       console.log('WebSearch API failed, using mock data:', webSearchError);

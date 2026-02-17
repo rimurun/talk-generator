@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Topic, FilterOptions, UsageStats } from '@/types';
 import { storage } from '@/lib/storage';
+import { getRateLimit as getDailyLimit } from '@/lib/rate-limit';
 
 interface UseTopicsReturn {
   topics: Topic[];
@@ -42,16 +43,26 @@ export function useTopics(): UseTopicsReturn {
     }
   };
 
-  // レート制限チェック
+  // レート制限チェック（1日30回、JST 0時リセット）
   const checkRateLimit = (): boolean => {
     const rateLimit = storage.getTodayRateLimit();
-    const profile = storage.getProfile();
-    const dailyLimit = profile?.dailyLimit || 50;
+    const dailyLimit = 30;
     
     const totalRequests = rateLimit.topicRequests + rateLimit.scriptRequests;
     
     if (totalRequests >= dailyLimit) {
-      setError(`本日の生成上限（${dailyLimit}回）に達しました。明日お試しください。`);
+      // 次のリセットまでの時間を計算
+      const now = new Date();
+      const jstNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+      const tomorrow = new Date(jstNow);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(0, 0, 0, 0);
+      const ms = tomorrow.getTime() - jstNow.getTime();
+      const h = Math.floor(ms / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      const timeStr = h > 0 ? `${h}時間${m}分` : `${m}分`;
+      
+      setError(`本日の生成上限（${dailyLimit}回）に達しました。リセットまで${timeStr}です（毎日0:00にリセット）`);
       return false;
     }
     
@@ -76,12 +87,15 @@ export function useTopics(): UseTopicsReturn {
       await new Promise(resolve => setTimeout(resolve, 1000)); // UX改善のための短い待機
       setProgressStep('📝 トピック整理中...');
 
+      // 前回のタイトルを取得（重複防止）
+      const previousTitles = storage.getPreviousTopicTitles();
+
       const response = await fetch('/api/topics', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ filters }),
+        body: JSON.stringify({ filters, previousTitles }),
       });
 
       setProgressStep('🤖 AI分析中...');
@@ -106,6 +120,12 @@ export function useTopics(): UseTopicsReturn {
       await new Promise(resolve => setTimeout(resolve, 500)); // 完了メッセージ表示
       
       setTopics(data.topics);
+
+      // 生成したタイトルを保存（次回重複防止）
+      if (data.topics && data.topics.length > 0) {
+        const newTitles = data.topics.map((t: Topic) => t.title);
+        storage.savePreviousTopicTitles(newTitles);
+      }
 
       // レート制限カウンター更新
       if (!data.cached) {

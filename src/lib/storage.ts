@@ -178,18 +178,17 @@ class LocalStorage {
     return ratings.find(r => r.scriptId === scriptId) || null;
   }
 
-  // レート制限管理
+  // レート制限管理（JST午前0時リセット）
   getTodayRateLimit(): RateLimit {
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
     if (!this.isClient) {
-      const today = new Date().toISOString().split('T')[0];
       return { date: today, topicRequests: 0, scriptRequests: 0, totalCost: 0 };
     }
     
-    const today = new Date().toISOString().split('T')[0];
     const data = localStorage.getItem('talk-generator-ratelimit');
     const rateLimit: RateLimit = data ? JSON.parse(data) : { date: today, topicRequests: 0, scriptRequests: 0, totalCost: 0 };
     
-    // 日付が変わっていたらリセット
+    // JST日付が変わっていたらリセット
     if (rateLimit.date !== today) {
       return { date: today, topicRequests: 0, scriptRequests: 0, totalCost: 0 };
     }
@@ -254,7 +253,7 @@ class LocalStorage {
       channelName: '',
       specialties: [],
       ngWords: [],
-      dailyLimit: 50,
+      dailyLimit: 30,
       preferredTone: 'フレンドリー',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -262,6 +261,21 @@ class LocalStorage {
     
     this.setProfile(defaultProfile);
     return defaultProfile;
+  }
+
+  // 過去のトピックタイトル管理（重複防止用）
+  getPreviousTopicTitles(): string[] {
+    if (!this.isClient) return [];
+    const data = localStorage.getItem('talk-generator-prev-titles');
+    return data ? JSON.parse(data) : [];
+  }
+
+  savePreviousTopicTitles(titles: string[]): void {
+    if (!this.isClient) return;
+    // 直近50件のみ保持
+    const all = [...titles, ...this.getPreviousTopicTitles()];
+    const unique = [...new Set(all)].slice(0, 50);
+    localStorage.setItem('talk-generator-prev-titles', JSON.stringify(unique));
   }
 
   // 全データクリア
@@ -273,7 +287,9 @@ class LocalStorage {
       'talk-generator-favorites',
       'talk-generator-history',
       'talk-generator-ratings',
-      'talk-generator-ratelimit'
+      'talk-generator-ratelimit',
+      'talk-generator-prev-titles',
+      'talk-generator-daily-usage'
     ];
     
     keys.forEach(key => localStorage.removeItem(key));

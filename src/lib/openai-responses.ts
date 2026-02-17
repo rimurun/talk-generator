@@ -37,7 +37,7 @@ interface OpenAIResponsesResponse {
 /**
  * OpenAI Responses APIを使用してweb_searchでトピック生成
  */
-export async function generateTopicsWithWebSearch(filters: FilterOptions): Promise<{
+export async function generateTopicsWithWebSearch(filters: FilterOptions, previousTitles?: string[]): Promise<{
   topics: Topic[];
   cost: number;
   cached: boolean;
@@ -150,7 +150,13 @@ ${categoryBalanceInstruction}
    - 要約: [3行以内で具体的に説明、検索結果の内容を反映]
    - 配信適性: [なぜ配信に向いているかの理由]
 
-検索結果から得られた実在URLも含めてください。`;
+検索結果から得られた実在URLも含めてください。
+
+${previousTitles && previousTitles.length > 0 ? `【重要：以下のトピックは前回すでに生成済みです。絶対に同じ話題・類似の話題を含めないでください】
+除外リスト:
+${previousTitles.slice(0, 20).map(t => `- ${t}`).join('\n')}
+
+上記と同じ内容、同じ事件、同じ人物の話題は避け、必ず新しい切り口の話題を生成してください。` : ''}`;
 
       const requestBody: OpenAIResponsesRequest = {
         model: MODEL,
