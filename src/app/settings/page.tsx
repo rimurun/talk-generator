@@ -575,8 +575,8 @@ export default function SettingsPage() {
               設定をエクスポート
             </button>
             
-            <label className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors cursor-pointer">
-              設定をインポート
+            <label className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors cursor-pointer flex items-center justify-center">
+              <span>設定をインポート</span>
               <input
                 type="file"
                 accept=".json"
