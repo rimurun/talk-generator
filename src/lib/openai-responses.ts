@@ -49,6 +49,7 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
   const cachedTopics = memoryCache.getTopics(cacheKey);
   if (cachedTopics) {
     console.log('🎯 トピックキャッシュヒット（完全一致）');
+    trackUsage(0, 0, true);
     return {
       topics: cachedTopics,
       cost: 0,
@@ -61,6 +62,7 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
   const fuzzyMatch = memoryCache.getTopicsFuzzy(filters);
   if (fuzzyMatch && fuzzyMatch.similarity >= 0.8) {
     console.log(`🔄 トピックキャッシュヒット（ファジーマッチ: ${Math.round(fuzzyMatch.similarity * 100)}%）`);
+    trackUsage(0, 0, true);
     return {
       topics: fuzzyMatch.data,
       cost: 0,
@@ -330,6 +332,10 @@ ${previousTitles.slice(0, 20).map(t => `- ${t}`).join('\n')}
       cost = inputCost + outputCost;
     }
 
+    // 使用量トラッキング
+    const totalTokens = usage ? (usage.input_tokens + usage.output_tokens) : 0;
+    trackUsage(totalTokens, cost, false);
+
     // キャッシュ保存
     memoryCache.setTopics(cacheKey, filteredTopics);
 
@@ -574,6 +580,10 @@ JSON形式で返答:
       const outputCost = (usage.completion_tokens / 1000000) * COST_PER_1M_OUTPUT_TOKENS;
       cost = inputCost + outputCost;
     }
+
+    // 使用量トラッキング
+    const totalTokens = usage ? (usage.prompt_tokens + usage.completion_tokens) : 0;
+    trackUsage(totalTokens, cost, false);
 
     // キャッシュ保存
     memoryCache.setScript(cacheKey, scriptData);
@@ -1093,17 +1103,54 @@ function generateFallbackTopics(filters: FilterOptions): Topic[] {
   return filteredFallback;
 }
 
+// サーバーサイド使用量トラッカー（インメモリ、リクエストごとに蓄積）
+const usageTracker = {
+  date: new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' }),
+  tokensUsed: 0,
+  requestsUsed: 0,
+  estimatedCost: 0,
+  cacheHits: 0,
+  totalRequests: 0,
+};
+
+function resetTrackerIfNewDay() {
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+  if (usageTracker.date !== today) {
+    usageTracker.date = today;
+    usageTracker.tokensUsed = 0;
+    usageTracker.requestsUsed = 0;
+    usageTracker.estimatedCost = 0;
+    usageTracker.cacheHits = 0;
+    usageTracker.totalRequests = 0;
+  }
+}
+
+export function trackUsage(tokens: number, cost: number, cached: boolean) {
+  resetTrackerIfNewDay();
+  usageTracker.totalRequests++;
+  if (cached) {
+    usageTracker.cacheHits++;
+  } else {
+    usageTracker.tokensUsed += tokens;
+    usageTracker.requestsUsed++;
+    usageTracker.estimatedCost += cost;
+  }
+}
+
 /**
- * API使用統計（推定値）
+ * API使用統計（リアルタイムトラッキング、1日30回制限）
  */
 export async function getApiUsageStats() {
-  // 実際の実装では使用量を内部で追跡
+  resetTrackerIfNewDay();
+  const cacheHitRate = usageTracker.totalRequests > 0
+    ? usageTracker.cacheHits / usageTracker.totalRequests
+    : 0;
   return {
-    tokensUsed: 2450,
-    tokensLimit: 10000,
-    requestsUsed: 12,
-    requestsLimit: 100,
-    estimatedCost: 0.025,
-    cacheHitRate: 0.35
+    tokensUsed: usageTracker.tokensUsed,
+    tokensLimit: 100000,
+    requestsUsed: usageTracker.requestsUsed,
+    requestsLimit: 30,
+    estimatedCost: usageTracker.estimatedCost,
+    cacheHitRate: Math.round(cacheHitRate * 100) / 100,
   };
 }
