@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateScriptWithCache } from '@/lib/openai-responses';
 import { GenerateScriptRequest } from '@/types';
 
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateScriptRequest = await request.json();

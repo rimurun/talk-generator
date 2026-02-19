@@ -3,6 +3,9 @@ import { generateTopicsWithWebSearch } from '@/lib/openai-responses';
 import { mockTopics } from '@/lib/mock-data';
 import { GenerateTopicsRequest, Topic } from '@/types';
 
+// Vercel Function timeout (Hobby=60s max)
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateTopicsRequest = await request.json();
@@ -54,7 +57,7 @@ export async function POST(request: NextRequest) {
 
       if (categories.length >= 2) {
         // カテゴリを2-3グループに分割して並列実行（API呼び出し最小化）
-        const chunkSize = Math.ceil(categories.length / Math.min(3, categories.length));
+        const chunkSize = Math.ceil(categories.length / Math.min(2, categories.length));
         const groups: string[][] = [];
         for (let i = 0; i < categories.length; i += chunkSize) {
           groups.push(categories.slice(i, i + chunkSize));

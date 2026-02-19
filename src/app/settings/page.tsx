@@ -166,9 +166,14 @@ export default function SettingsPage() {
 
   const clearCache = async () => {
     try {
+      // サーバー側キャッシュクリア
       const response = await fetch('/api/cache', { method: 'DELETE' });
+      // クライアント側もクリア（レート制限、前回タイトル、履歴）
+      localStorage.removeItem('talk-generator-ratelimit');
+      localStorage.removeItem('talk-generator-previous-titles');
+      localStorage.removeItem('talk-generator-history');
       if (response.ok) {
-        setMessage('キャッシュをクリアしました');
+        setMessage('キャッシュ・レート制限・履歴をすべてクリアしました');
         loadData(); // データ再読み込み
       } else {
         setMessage('キャッシュクリアに失敗しました');
