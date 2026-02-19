@@ -1,4 +1,4 @@
-﻿import { Topic, Script, FilterOptions } from '@/types';
+import { Topic, Script, FilterOptions } from '@/types';
 import { memoryCache, createTopicsCacheKey, createScriptCacheKey } from './cache';
 
 // OpenAI Responses API設定
@@ -92,6 +92,7 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
         'エンタメ': 'エンタメ アニメ 映画 音楽 芸能 ゲーム 話題 海外セレブ ハリウッド 2026',
         'SNS': 'SNS トレンド Twitter Instagram YouTube 日本 海外バズ 2026',
         'TikTok': 'TikTok バズ チャレンジ 日本 海外 流行 2026',
+        '海外おもしろ': '海外 おもしろ 面白い ニュース 珍事件 変なニュース 世界 びっくり ユニーク 2026',
         '事件事故': '事件 事故 災害 速報 日本 世界 海外 国際ニュース 2026年2月'
       };
 
@@ -118,7 +119,8 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
       const categoryBalanceInstruction = filters.categories.length === 0 || filters.categories.length > 1 
         ? `【重要：カテゴリバランス厳守】
 ※必ず以下の割合でトピックを生成してください：
-- ニュース: 3件（政治・経済・社会・テクノロジー等の時事ニュース）
+- ニュース: 2件（政治・経済・社会・テクノロジー等の時事ニュース）
+  - 海外おもしろ: 2件（海外の面白い・珍しい・ユニークなニュース）
 - エンタメ: 3件（アニメ・映画・音楽・芸能・ゲーム）
 - SNS: 3件（Twitter/X・Instagram・YouTube等のプラットフォーム動向）
 - TikTok: 3件（TikTok固有のトレンド・チャレンジ・バズ動画）
@@ -149,7 +151,7 @@ ${categoryBalanceInstruction ? '各カテゴリ均等に生成' : ''}
 
 各トピックを以下形式で10-15件生成:
 1. **[タイトル30文字以内]**
-   - カテゴリ: [ニュース/エンタメ/SNS/TikTok/事件事故]
+   - カテゴリ: [ニュース/エンタメ/SNS/TikTok/海外おもしろ/事件事故]
    - 要約: [2行以内]
    - 配信適性: [1行]
 
@@ -417,7 +419,7 @@ export async function generateScriptWithCache(
   topic: {
     id: string;
     title: string;
-    category: 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '事件事故';
+    category: 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '海外おもしろ' | '事件事故';
     summary: string;
     sensitivityLevel: 1 | 2 | 3;
     riskLevel: 'low' | 'medium' | 'high';
@@ -725,7 +727,7 @@ function finalizeAndAddTopic(topic: Partial<Topic>, topics: Topic[], annotations
 /**
  * テキストからカテゴリを推測
  */
-function guessCategory(title: string, summary: string): 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '事件事故' {
+function guessCategory(title: string, summary: string): 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '海外おもしろ' | '事件事故' {
   const text = (title + ' ' + summary).toLowerCase();
   
   // 事件事故キーワード
@@ -795,7 +797,7 @@ function guessSensitivityLevel(title: string, summary: string): 1 | 2 | 3 {
  * ランダムなカテゴリを取得
  */
 function getRandomCategory(): 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' {
-  const categories: ('ニュース' | 'エンタメ' | 'SNS' | 'TikTok')[] = ['ニュース', 'エンタメ', 'SNS', 'TikTok'];
+  const categories: ('ニュース' | 'エンタメ' | 'SNS' | 'TikTok')[] = ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ'];
   return categories[Math.floor(Math.random() * categories.length)];
 }
 
@@ -831,7 +833,7 @@ function createFallbackScript(
   topic: {
     id: string;
     title: string;
-    category: 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '事件事故';
+    category: 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '海外おもしろ' | '事件事故';
     summary: string;
     sensitivityLevel: 1 | 2 | 3;
     riskLevel: 'low' | 'medium' | 'high';
@@ -1071,8 +1073,17 @@ function generateFallbackTopics(filters: FilterOptions): Topic[] {
       createdAt: new Date().toISOString()
     },
     {
-      id: `fallback-${Date.now()}-5`,
-      title: '季節の話題・イベント',
+      id: `fallback-${Date.now()}-5.5`,
+      title: '海外で話題のユニークニュース',
+        category: '海外おもしろ' as any,
+        summary: '海外で話題になっている面白い・ユニークなニュースを紹介。思わず笑ってしまう珍事件や、びっくりするような出来事。',
+        sensitivityLevel: 1 as 1,
+        riskLevel: 'low' as 'low',
+        detailMode: false,
+      },
+      {
+        id: `fallback-${Date.now()}-6`,
+        title: '季節の話題・イベント',
       category: 'ニュース',
       summary: '今の時期ならではの話題や、これから予定されているイベントについて話してみませんか？',
       sensitivityLevel: 1,

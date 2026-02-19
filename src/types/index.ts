@@ -1,7 +1,7 @@
 export interface Topic {
   id: string;
   title: string;
-  category: 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '事件事故';
+  category: 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '海外おもしろ' | '事件事故';
   summary: string;
   sensitivityLevel: 1 | 2 | 3;
   riskLevel: 'low' | 'medium' | 'high';
@@ -56,7 +56,7 @@ export interface GenerateScriptRequest {
   topic?: {
     id: string;
     title: string;
-    category: 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '事件事故';
+    category: 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '海外おもしろ' | '事件事故';
     summary: string;
     sensitivityLevel: 1 | 2 | 3;
     riskLevel: 'low' | 'medium' | 'high';

@@ -72,6 +72,7 @@ export const TOPIC_CONFIG = {
     ENTERTAINMENT: 'エンタメ',
     SNS: 'SNS',
     TIKTOK: 'TikTok',
+    FOREIGN_FUNNY: '海外おもしろ',
     INCIDENT: '事件事故',
   },
   

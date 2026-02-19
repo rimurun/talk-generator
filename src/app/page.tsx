@@ -251,7 +251,7 @@ export default function Home() {
               🚀 バッチモード: 選択したカテゴリから重複なしで{batchCount}件生成します
             </p>
           )}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {categoryOptions.map((category) => (
               <button
                 key={category.value}

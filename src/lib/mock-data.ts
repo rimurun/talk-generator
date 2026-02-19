@@ -1,4 +1,4 @@
-﻿import { Topic, Script } from '@/types';
+import { Topic, Script } from '@/types';
 
 export const mockTopics: Topic[] = [
   {
@@ -229,6 +229,7 @@ export const categoryOptions = [
   { value: 'エンタメ', label: 'エンタメ' },
   { value: 'SNS', label: 'SNS' },
   { value: 'TikTok', label: 'TikTok' },
+  { value: '海外おもしろ', label: '海外おもしろ' },
   { value: '事件事故', label: '事件事故' }
 ];
 
