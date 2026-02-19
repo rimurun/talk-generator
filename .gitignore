@@ -49,3 +49,4 @@ final-test.js
 test-topics-result.json
 CACHE_OPTIMIZATION_REPORT.md
 .vercel
+.env*.local

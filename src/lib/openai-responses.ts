@@ -292,12 +292,25 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
     // フィルター適用
     let filteredTopics = uniqueTopics;
     
-    if (filters.categories.length > 0) {
-      if (typeof console !== 'undefined') console.log('[DEBUG] Pre-filter topics:', filteredTopics.map(t => t.category + ':' + t.title.substring(0,15)));
+    if (filters.categories.length > 1) {
+      // 複数カテゴリ選択時のみフィルタ（検索クエリが既にカテゴリ特化してる）
       filteredTopics = filteredTopics.filter(topic => 
         filters.categories.includes(topic.category)
       );
-      if (typeof console !== 'undefined') console.log('[DEBUG] Post-filter topics:', filteredTopics.length, 'of requested categories:', filters.categories);
+    } else if (filters.categories.length === 1) {
+      // 単一カテゴリ: 検索クエリで絞ってるのでカテゴリフィルタは緩く
+      // guessCategory/GPTカテゴリが一致するものを優先、なければ全部通す
+      const matched = filteredTopics.filter(topic => filters.categories.includes(topic.category));
+      if (matched.length >= 3) {
+        filteredTopics = matched;
+      }
+      // matched < 3 なら全トピックを通す（カテゴリを強制上書き）
+      else {
+        filteredTopics = filteredTopics.map(topic => ({
+          ...topic,
+          category: filters.categories[0] as any
+        }));
+      }
     }
 
     if (!filters.includeIncidents) {
