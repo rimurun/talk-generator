@@ -293,9 +293,11 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
     let filteredTopics = uniqueTopics;
     
     if (filters.categories.length > 0) {
+      if (typeof console !== 'undefined') console.log('[DEBUG] Pre-filter topics:', filteredTopics.map(t => t.category + ':' + t.title.substring(0,15)));
       filteredTopics = filteredTopics.filter(topic => 
         filters.categories.includes(topic.category)
       );
+      if (typeof console !== 'undefined') console.log('[DEBUG] Post-filter topics:', filteredTopics.length, 'of requested categories:', filters.categories);
     }
 
     if (!filters.includeIncidents) {
@@ -705,8 +707,10 @@ function finalizeAndAddTopic(topic: Partial<Topic>, topics: Topic[], annotations
   
   // カテゴリ判定: GPTが指定したカテゴリを優先、なければテキストから推測
   const validCategories = ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ', '事件事故'];
-  const gptCat = (topic as any)._gptCategory;
-  const category = (gptCat && validCategories.includes(gptCat)) ? gptCat : guessCategory(topic.title, topic.summary || '');
+  const gptCat = (topic as any)._gptCategory?.trim();
+  const guessed = guessCategory(topic.title, topic.summary || '');
+  const category = (gptCat && validCategories.includes(gptCat)) ? gptCat : guessed;
+  if (typeof console !== 'undefined') console.log('[DEBUG] title:', topic.title, '| gptCat:', gptCat, '| guessed:', guessed, '| final:', category);
   
   // 要約のクリーニング＆長さ調整
   let summary = topic.summary || `${category}に関する最新の話題です。`;
