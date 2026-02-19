@@ -1,4 +1,4 @@
-import { Topic, Script, FilterOptions } from '@/types';
+﻿import { Topic, Script, FilterOptions } from '@/types';
 import { memoryCache, createTopicsCacheKey, createScriptCacheKey } from './cache';
 
 // OpenAI Responses API設定
@@ -137,50 +137,24 @@ ${filters.includeIncidents ? '- 事件事故: 1件（事件・事故・災害）
 ※ニュース・エンタメに偏らず、全カテゴリから均等に生成必須` 
         : '';
       
-      const input = `${timeContext}の配信向けトーク台本生成のため、以下のクエリで日本の最新情報を検索してください。
+      const input = `${timeContext}の配信向けトピック生成。
 
-【検索クエリ】
-${searchQueries.map((query, i) => `${i + 1}. "${query}"`).join('\n')}
+検索: ${searchQueries.slice(0, 3).join(' / ')}
+${categoryFilter}
+${keyword ? `キーワード: ${keyword}` : ''}
+${filters.includeIncidents ? '' : '事件事故除外'}
+テンション: ${filters.tension}
 
-【条件】
-- ${categoryFilter}
-${keyword ? `- 【重要】ユーザー指定キーワード「${keyword}」に関連するトピックを優先的に生成してください` : ''}
-- ${filters.includeIncidents ? '事件事故も含める' : '事件事故は除外'}
-- テンション: ${filters.tension} (${filters.tension === 'high' ? 'エネルギッシュで盛り上がる' : filters.tension === 'medium' ? 'バランス良く親しみやすい' : '落ち着いて丁寧な'})
-- 配信者が話しやすく、視聴者が参加しやすいもの
+${categoryBalanceInstruction ? '各カテゴリ均等に生成' : ''}
 
-【カテゴリ定義（厳密に従ってください）】
-- ニュース: 国内＋海外の政治・経済・社会・テクノロジー・国際情勢・海外おもしろニュース（日本だけに偏らない）
-- エンタメ: アニメ・映画・音楽・芸能・ゲーム・スポーツ・海外セレブ・ハリウッド
-- SNS: Twitter/X・Instagram・YouTube等の国内外のプラットフォーム動向・バズ
-- TikTok: TikTok固有の国内外トレンド・チャレンジ・バズ動画・クリエイター話題
-- 事件事故: 日本全国＋世界の事件・事故・災害・緊急事態（特定地域に偏らず、国際ニュースも必ず含める）
-
-【重要：多様性の確保】
-- 日本国内ニュースだけでなく、海外のおもしろニュース・珍ニュース・国際ニュースも必ず含めてください
-- 各カテゴリ内で「国内」「海外」をバランスよく混ぜること
-- 同じジャンルの話題ばかりにならないよう、幅広いテーマから選ぶこと
-
-${categoryBalanceInstruction}
-
-【出力形式】
-検索結果をもとに、各トピックを以下の形式で10-15件生成:
-
+各トピックを以下形式で10-15件生成:
 1. **[タイトル30文字以内]**
-   - カテゴリ: [上記定義に厳密に従って分類]
-   - 要約: [3行以内で具体的に説明、検索結果の内容を反映]
-   - 配信適性: [なぜ配信に向いているかの理由]
+   - カテゴリ: [ニュース/エンタメ/SNS/TikTok/事件事故]
+   - 要約: [2行以内]
+   - 配信適性: [1行]
 
-検索結果から得られた実在URLも含めてください。
-
-${previousTitles && previousTitles.length > 0 ? `【最重要：重複禁止ルール】
-以下のトピックは過去に生成済みです。これらと同じ話題、同じ事件、同じ人物、同じテーマの話題は一切含めないでください。
-似ている話題もNGです。完全に別の新しい話題のみを生成してください。
-
-■除外リスト（${previousTitles.length}件）:
-${previousTitles.slice(0, 30).map(t => `× ${t}`).join('\n')}
-
-上記の話題と少しでも被る場合は、別の話題に差し替えてください。` : ''}`;
+国内外バランスよく。実在URLも含める。
+${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(0, 15).join(', ')}` : ''}`;
 
       const requestBody: OpenAIResponsesRequest = {
         model: MODEL,
@@ -190,7 +164,7 @@ ${previousTitles.slice(0, 30).map(t => `× ${t}`).join('\n')}
 
       // リクエストタイムアウト設定（30秒）
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
 
       const response = await fetch(OPENAI_RESPONSES_ENDPOINT, {
         method: 'POST',

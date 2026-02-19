@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+﻿import { useState, useCallback } from 'react';
 import { Topic, FilterOptions, UsageStats } from '@/types';
 import { storage } from '@/lib/storage';
 import { getRateLimit as getDailyLimit } from '@/lib/rate-limit';
@@ -84,7 +84,6 @@ export function useTopics(): UseTopicsReturn {
       // 進捗表示
       setProgressStep('🔍 ニュース検索中...');
       
-      await new Promise(resolve => setTimeout(resolve, 1000)); // UX改善のための短い待機
       setProgressStep('📝 トピック整理中...');
 
       // 前回のタイトルを取得（重複防止）
@@ -116,8 +115,6 @@ export function useTopics(): UseTopicsReturn {
 
       const data = await response.json();
       setProgressStep('✅ 完了！');
-      
-      await new Promise(resolve => setTimeout(resolve, 500)); // 完了メッセージ表示
       
       setTopics(data.topics);
 
@@ -175,7 +172,6 @@ export function useTopics(): UseTopicsReturn {
       // 進捗表示
       setProgressStep('🔍 ニュース一括検索中...');
       
-      await new Promise(resolve => setTimeout(resolve, 1500));
       setProgressStep(`📝 ${count}件のトピック分析中...`);
 
       const response = await fetch('/api/batch', {
@@ -209,8 +205,6 @@ export function useTopics(): UseTopicsReturn {
 
       const data = await response.json();
       setProgressStep('✅ バッチ生成完了！');
-      
-      await new Promise(resolve => setTimeout(resolve, 800));
       
       setTopics(data.topics);
 
