@@ -53,14 +53,19 @@ export async function POST(request: NextRequest) {
         : ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ'];
 
       if (categories.length >= 2) {
-        // 全カテゴリを並列実行
+        // カテゴリを2-3グループに分割して並列実行（API呼び出し最小化）
+        const chunkSize = Math.ceil(categories.length / Math.min(3, categories.length));
+        const groups: string[][] = [];
+        for (let i = 0; i < categories.length; i += chunkSize) {
+          groups.push(categories.slice(i, i + chunkSize));
+        }
         const results = await Promise.all(
-          categories.map(cat =>
+          groups.map(group =>
             generateTopicsWithWebSearch(
-              { ...filters, categories: [cat] },
+              { ...filters, categories: group },
               previousTitles
             ).catch(err => {
-              console.error(`カテゴリ ${cat} エラー:`, err);
+              console.error(`カテゴリグループ ${group.join(',')} エラー:`, err);
               return { topics: [] as Topic[], cost: 0, cached: false };
             })
           )

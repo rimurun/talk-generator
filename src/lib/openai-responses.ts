@@ -4,7 +4,7 @@ import { memoryCache, createTopicsCacheKey, createScriptCacheKey } from './cache
 // OpenAI Responses API設定
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_RESPONSES_ENDPOINT = 'https://api.openai.com/v1/responses';
-const MODEL = 'gpt-4o';
+const MODEL = 'gpt-4o-mini';
 
 // デバッグログ用
 const DEBUG = process.env.NODE_ENV !== 'production';
@@ -88,11 +88,11 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
       
       // カテゴリ別検索クエリ
       const categoryQueries = {
-        'ニュース': '日本 世界 最新ニュース 政治 経済 社会 テクノロジー 海外おもしろニュース 2026年2月',
+        'ニュース': '日本 最新ニュース 政治 経済 社会 テクノロジー 2026年2月',
         'エンタメ': 'エンタメ アニメ 映画 音楽 芸能 ゲーム 話題 海外セレブ ハリウッド 2026',
         'SNS': 'SNS トレンド Twitter Instagram YouTube 日本 海外バズ 2026',
         'TikTok': 'TikTok バズ チャレンジ 日本 海外 流行 2026',
-        '海外おもしろ': '海外 おもしろ 面白い ニュース 珍事件 変なニュース 世界 びっくり ユニーク 2026',
+        '海外おもしろ': '海外 おもしろニュース 珍事件 珍ニュース 面白い事件 世界の変なニュース びっくり ユニーク 衝撃 笑える 2026',
         '事件事故': '事件 事故 災害 速報 日本 世界 海外 国際ニュース 2026年2月'
       };
 
@@ -166,7 +166,7 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
 
       // リクエストタイムアウト設定（30秒）
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       const response = await fetch(OPENAI_RESPONSES_ENDPOINT, {
         method: 'POST',
@@ -736,6 +736,12 @@ function guessCategory(title: string, summary: string): 'ニュース' | 'エン
     return '事件事故';
   }
   
+  // 海外おもしろキーワード（複合判定：海外×面白系 or 珍系単独）
+  if ((text.match(/海外|外国|世界/) && text.match(/おもしろ|面白|笑|珍|ユニーク|びっくり|変|驚|衝撃|ヤバ/)) ||
+      text.match(/珍事件|珍ニュース|おもしろニュース|面白ニュース|世界仰天|世界びっくり/)) {
+    return '海外おもしろ';
+  }
+
   // TikTokキーワード（SNSより先に判定）
   if (text.includes('tiktok') || text.includes('ティックトック') || 
       text.includes('チャレンジ') && text.includes('バズ') ||
