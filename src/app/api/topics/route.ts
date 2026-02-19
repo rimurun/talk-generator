@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       // 🚀 並列化: カテゴリが2つ以上なら分割して同時実行
       const categories = filters.categories.length > 0
         ? filters.categories
-        : ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ'];
+        : []; // 空=全カテゴリ → 1回のAPI呼び出しで全部取得
 
       if (categories.length >= 2) {
         // カテゴリを2-3グループに分割して並列実行（API呼び出し最小化）
