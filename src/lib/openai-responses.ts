@@ -650,12 +650,23 @@ function parseTopicsFromText(messageText: string, annotations: any[]): Topic[] {
         createdAt: new Date().toISOString()
       };
     }
+    // カテゴリ行を検出
+    else if (line.match(/カテゴリ[：:]\s*/)) {
+      const catMatch = line.replace(/.*カテゴリ[：:]\s*/, '').replace(/[\[\]]/g, '').trim();
+      if (catMatch) {
+        (currentTopic as any)._gptCategory = catMatch;
+      }
+    }
     // 説明行を検出
     else if (line && !line.match(/^[\s]*$/) && currentTopic.title) {
-      if (currentTopic.summary) {
-        currentTopic.summary += ' ' + line;
-      } else {
-        currentTopic.summary = line;
+      // カテゴリ/配信適性/要約のラベル行は除外してsummaryに入れない
+      const cleaned = line.replace(/^-\s*/, '').replace(/^(要約|配信適性)[：:]\s*/, '');
+      if (cleaned && !line.match(/^-\s*(配信適性)[：:]/)) {
+        if (currentTopic.summary) {
+          currentTopic.summary += ' ' + cleaned;
+        } else {
+          currentTopic.summary = cleaned;
+        }
       }
     }
   }
@@ -692,8 +703,10 @@ function finalizeAndAddTopic(topic: Partial<Topic>, topics: Topic[], annotations
   // タイトルの角括弧除去
   topic.title = topic.title.replace(/^\[(.+)\]$/, '$1').replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1');
   
-  // カテゴリ推測
-  const category = guessCategory(topic.title, topic.summary || '');
+  // カテゴリ判定: GPTが指定したカテゴリを優先、なければテキストから推測
+  const validCategories = ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ', '事件事故'];
+  const gptCat = (topic as any)._gptCategory;
+  const category = (gptCat && validCategories.includes(gptCat)) ? gptCat : guessCategory(topic.title, topic.summary || '');
   
   // 要約のクリーニング＆長さ調整
   let summary = topic.summary || `${category}に関する最新の話題です。`;
