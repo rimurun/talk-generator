@@ -1,13 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { generateTopicsWithWebSearch } from '@/lib/openai-responses';
 import { mockTopics } from '@/lib/mock-data';
-import { GenerateTopicsRequest } from '@/types';
+import { GenerateTopicsRequest, Topic } from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateTopicsRequest = await request.json();
     
-    // バリデーション
     if (!body.filters) {
       return NextResponse.json(
         { error: 'フィルター条件が指定されていません' },
@@ -17,7 +16,6 @@ export async function POST(request: NextRequest) {
 
     const { filters, previousTitles } = body;
 
-    // フィルター条件の検証
     if (!Array.isArray(filters.categories)) {
       return NextResponse.json(
         { error: 'カテゴリは配列である必要があります' },
@@ -46,45 +44,81 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // トピック生成（キャッシュ・コスト対応）
     let result;
-    
+
     try {
-      result = await generateTopicsWithWebSearch(filters, previousTitles);
+      // 🚀 並列化: カテゴリが2つ以上なら分割して同時実行
+      const categories = filters.categories.length > 0
+        ? filters.categories
+        : ['ニュース', 'エンタメ', 'SNS', 'TikTok'];
+
+      if (categories.length >= 2) {
+        // 全カテゴリを並列実行
+        const results = await Promise.all(
+          categories.map(cat =>
+            generateTopicsWithWebSearch(
+              { ...filters, categories: [cat] },
+              previousTitles
+            ).catch(err => {
+              console.error(`カテゴリ ${cat} エラー:`, err);
+              return { topics: [] as Topic[], cost: 0, cached: false };
+            })
+          )
+        );
+
+        // 結果を集約
+        const allTopics = results.flatMap(r => r.topics);
+        const totalCost = results.reduce((sum, r) => sum + r.cost, 0);
+        const anyCached = results.some(r => r.cached);
+
+        // 重複除去（タイトルベース）
+        const seen = new Set<string>();
+        const uniqueTopics = allTopics.filter(t => {
+          const key = t.title.toLowerCase().slice(0, 20);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        result = {
+          topics: uniqueTopics.slice(0, 15),
+          cost: totalCost,
+          cached: anyCached && results.every(r => r.cached)
+        };
+      } else {
+        // 単一カテゴリはそのまま
+        result = await generateTopicsWithWebSearch(filters, previousTitles);
+      }
     } catch (webSearchError) {
-      // WebSearch APIが失敗した場合、mock dataにfallback
       console.log('WebSearch API failed, using mock data:', webSearchError);
-      
+
       let filteredTopics = mockTopics;
 
-      // Category filter
       if (filters.categories.length > 0) {
-        filteredTopics = filteredTopics.filter(topic => 
+        filteredTopics = filteredTopics.filter(topic =>
           filters.categories.includes(topic.category)
         );
       }
 
-      // Incident filter
       if (!filters.includeIncidents) {
-        filteredTopics = filteredTopics.filter(topic => 
+        filteredTopics = filteredTopics.filter(topic =>
           topic.category !== '事件事故'
         );
       }
 
-      // Risk level adjustment based on tension
       if (filters.tension === 'low') {
-        filteredTopics = filteredTopics.filter(topic => 
+        filteredTopics = filteredTopics.filter(topic =>
           topic.riskLevel !== 'high'
         );
       }
-      
+
       result = {
         topics: filteredTopics.slice(0, 15),
         cost: 0,
         cached: false
       };
     }
-    
+
     return NextResponse.json({
       topics: result.topics,
       cost: result.cost,
@@ -94,18 +128,17 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('トピック生成エラー:', error);
-    
-    // OpenAI API エラーの場合、より詳細なメッセージ
+
     if (error instanceof Error && error.message.includes('OpenAI API')) {
       return NextResponse.json(
-        { 
+        {
           error: 'AI生成サービスでエラーが発生しました。しばらく後に再試行してください。',
-          details: error.message 
+          details: error.message
         },
         { status: 503 }
       );
     }
-    
+
     return NextResponse.json(
       { error: 'トピック生成中にエラーが発生しました' },
       { status: 500 }
