@@ -1075,15 +1075,16 @@ function generateFallbackTopics(filters: FilterOptions): Topic[] {
     {
       id: `fallback-${Date.now()}-5.5`,
       title: '海外で話題のユニークニュース',
-        category: '海外おもしろ' as any,
-        summary: '海外で話題になっている面白い・ユニークなニュースを紹介。思わず笑ってしまう珍事件や、びっくりするような出来事。',
-        sensitivityLevel: 1 as 1,
-        riskLevel: 'low' as 'low',
-        detailMode: false,
-      },
-      {
-        id: `fallback-${Date.now()}-6`,
-        title: '季節の話題・イベント',
+      category: '海外おもしろ',
+      summary: '海外で話題になっている面白い・ユニークなニュースを紹介。思わず笑ってしまう珍事件や、びっくりするような出来事。',
+      sensitivityLevel: 1,
+      riskLevel: 'low',
+      sourceUrl: 'https://foreign-funny.example.com',
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: `fallback-${Date.now()}-6`,
+      title: '季節の話題・イベント',
       category: 'ニュース',
       summary: '今の時期ならではの話題や、これから予定されているイベントについて話してみませんか？',
       sensitivityLevel: 1,
