@@ -298,19 +298,11 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
         filters.categories.includes(topic.category)
       );
     } else if (filters.categories.length === 1) {
-      // 単一カテゴリ: 検索クエリで絞ってるのでカテゴリフィルタは緩く
-      // guessCategory/GPTカテゴリが一致するものを優先、なければ全部通す
-      const matched = filteredTopics.filter(topic => filters.categories.includes(topic.category));
-      if (matched.length >= 3) {
-        filteredTopics = matched;
-      }
-      // matched < 3 なら全トピックを通す（カテゴリを強制上書き）
-      else {
-        filteredTopics = filteredTopics.map(topic => ({
-          ...topic,
-          category: filters.categories[0] as any
-        }));
-      }
+      // 単一カテゴリ: 検索クエリで既に絞ってるのでカテゴリを強制上書き
+      filteredTopics = filteredTopics.map(topic => ({
+        ...topic,
+        category: filters.categories[0] as any
+      }));
     }
 
     if (!filters.includeIncidents) {
@@ -691,22 +683,21 @@ function parseTopicsFromText(messageText: string, annotations: any[]): Topic[] {
     finalizeAndAddTopic(currentTopic, topics, annotations, topicCount);
   }
   
-  // 十分なトピックがない場合は補完
-  while (topics.length < 10) {
-    const category = getRandomCategory();
-    topics.push({
-      id: `topic-${Date.now()}-${topics.length}`,
-      title: `注目の${category}ニュース`,
-      category,
-      summary: `${category}分野で話題になっている最新情報です。`,
-      sensitivityLevel: 1,
-      riskLevel: 'low',
-      sourceUrl: annotations[topics.length % annotations.length]?.url || 'https://news.example.com',
-      createdAt: new Date().toISOString()
-    });
+  // パース結果が0件の場合のみログ出力（ダミー補完は廃止）
+  if (topics.length === 0) {
+    console.log("[WARN] GPTレスポンスからトピックをパースできませんでした");
   }
-  
-  return topics;
+
+  // 重複除去（タイトル類似度）
+  const seen = new Set();
+  const unique = topics.filter(t => {
+    const key = t.title.substring(0, 15);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return unique;
 }
 
 /**
