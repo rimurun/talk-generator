@@ -796,8 +796,8 @@ function guessSensitivityLevel(title: string, summary: string): 1 | 2 | 3 {
 /**
  * ランダムなカテゴリを取得
  */
-function getRandomCategory(): 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' {
-  const categories: ('ニュース' | 'エンタメ' | 'SNS' | 'TikTok')[] = ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ'];
+function getRandomCategory(): 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '海外おもしろ' {
+  const categories: ('ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '海外おもしろ')[] = ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ'];
   return categories[Math.floor(Math.random() * categories.length)];
 }
 
