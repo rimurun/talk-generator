@@ -104,7 +104,7 @@ export default function Home() {
 
   // レート制限アラート
   const rateLimit = storage.getTodayRateLimit();
-  const dailyLimit = profile?.dailyLimit || 50;
+  const dailyLimit = 30;
   const totalRequests = rateLimit.topicRequests + rateLimit.scriptRequests;
   const remainingRequests = Math.max(0, dailyLimit - totalRequests);
   const isNearLimit = remainingRequests <= 5;
@@ -205,6 +205,23 @@ export default function Home() {
           </div>
         </div>
         
+        {/* キーワード検索 */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-200 mb-2">
+            🔍 キーワードで絞り込み
+          </label>
+          <input
+            type="text"
+            value={filters.keyword || ''}
+            onChange={(e) => setFilters(prev => ({ ...prev, keyword: e.target.value }))}
+            placeholder="例: AI、円安、大谷翔平、地震..."
+            className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            空欄なら自動で最新の話題を取得します
+          </p>
+        </div>
+
         {/* カテゴリ選択 */}
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">

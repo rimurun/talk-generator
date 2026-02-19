@@ -1,4 +1,4 @@
-import { Topic, Script } from '@/types';
+﻿import { Topic, Script } from '@/types';
 
 export const mockTopics: Topic[] = [
   {
@@ -220,8 +220,9 @@ export const tonePresets = [
   '落ち着いた',
   'コメディ重視',
   'バランス重視',
-  '事実重視'
-];
+  '事実重視',
+    'タメ口'
+  ];
 
 export const categoryOptions = [
   { value: 'ニュース', label: 'ニュース' },

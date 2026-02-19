@@ -35,6 +35,7 @@ export interface FilterOptions {
   duration: 15 | 60 | 180;
   tension: 'low' | 'medium' | 'high';
   tone: string;
+  keyword?: string; // フリーワード検索
 }
 
 // API リクエスト・レスポンス型

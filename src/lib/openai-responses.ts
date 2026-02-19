@@ -44,31 +44,35 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
   cacheHitType?: 'exact' | 'fuzzy';
 }> {
   const cacheKey = createTopicsCacheKey(filters);
+  const hasPreviousTitles = previousTitles && previousTitles.length > 0;
   
-  // 完全一致キャッシュチェック
-  const cachedTopics = memoryCache.getTopics(cacheKey);
-  if (cachedTopics) {
-    console.log('🎯 トピックキャッシュヒット（完全一致）');
-    trackUsage(0, 0, true);
-    return {
-      topics: cachedTopics,
-      cost: 0,
-      cached: true,
-      cacheHitType: 'exact'
-    };
-  }
+  // キャッシュチェック（前回タイトルがある場合はスキップ → 必ず新しい結果を取得）
+  if (!hasPreviousTitles) {
+    const cachedTopics = memoryCache.getTopics(cacheKey);
+    if (cachedTopics) {
+      console.log('🎯 トピックキャッシュヒット（完全一致）');
+      trackUsage(0, 0, true);
+      return {
+        topics: cachedTopics,
+        cost: 0,
+        cached: true,
+        cacheHitType: 'exact'
+      };
+    }
 
-  // ファジーマッチキャッシュチェック（新機能）
-  const fuzzyMatch = memoryCache.getTopicsFuzzy(filters);
-  if (fuzzyMatch && fuzzyMatch.similarity >= 0.8) {
-    console.log(`🔄 トピックキャッシュヒット（ファジーマッチ: ${Math.round(fuzzyMatch.similarity * 100)}%）`);
-    trackUsage(0, 0, true);
-    return {
-      topics: fuzzyMatch.data,
-      cost: 0,
-      cached: true,
-      cacheHitType: 'fuzzy'
-    };
+    const fuzzyMatch = memoryCache.getTopicsFuzzy(filters);
+    if (fuzzyMatch && fuzzyMatch.similarity >= 0.8) {
+      console.log(`🔄 トピックキャッシュヒット（ファジーマッチ: ${Math.round(fuzzyMatch.similarity * 100)}%）`);
+      trackUsage(0, 0, true);
+      return {
+        topics: fuzzyMatch.data,
+        cost: 0,
+        cached: true,
+        cacheHitType: 'fuzzy'
+      };
+    }
+  } else {
+    console.log(`🔄 前回タイトル${previousTitles.length}件あり → キャッシュスキップ`);
   }
 
   if (!OPENAI_API_KEY) {
@@ -84,16 +88,25 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
       
       // カテゴリ別検索クエリ
       const categoryQueries = {
-        'ニュース': '日本 最新ニュース 政治 経済 社会 テクノロジー 2026年2月',
-        'エンタメ': 'エンタメ アニメ 映画 音楽 芸能 ゲーム 話題 2026',
-        'SNS': 'SNS トレンド Twitter Instagram YouTube 日本 2026',
-        'TikTok': 'TikTok バズ チャレンジ 日本 流行 2026'
+        'ニュース': '日本 世界 最新ニュース 政治 経済 社会 テクノロジー 海外おもしろニュース 2026年2月',
+        'エンタメ': 'エンタメ アニメ 映画 音楽 芸能 ゲーム 話題 海外セレブ ハリウッド 2026',
+        'SNS': 'SNS トレンド Twitter Instagram YouTube 日本 海外バズ 2026',
+        'TikTok': 'TikTok バズ チャレンジ 日本 海外 流行 2026',
+        '事件事故': '事件 事故 災害 速報 日本 世界 海外 国際ニュース 2026年2月'
       };
 
       // カテゴリフィルターに応じた検索クエリ選択
-      const searchQueries = filters.categories.length > 0 
+      let searchQueries = filters.categories.length > 0 
         ? filters.categories.map(cat => categoryQueries[cat as keyof typeof categoryQueries]).filter(Boolean)
         : Object.values(categoryQueries);
+
+      // フリーワードキーワードが指定されている場合、検索クエリに追加
+      const keyword = (filters as any).keyword?.trim();
+      if (keyword) {
+        searchQueries = searchQueries.map(q => `${keyword} ${q}`);
+        // キーワード単体の検索も追加
+        searchQueries.unshift(`${keyword} 最新ニュース 2026`);
+      }
 
       const categoryFilter = filters.categories.length > 0 ? 
         `カテゴリ指定: ${filters.categories.join(', ')}` : 
@@ -131,16 +144,22 @@ ${searchQueries.map((query, i) => `${i + 1}. "${query}"`).join('\n')}
 
 【条件】
 - ${categoryFilter}
+${keyword ? `- 【重要】ユーザー指定キーワード「${keyword}」に関連するトピックを優先的に生成してください` : ''}
 - ${filters.includeIncidents ? '事件事故も含める' : '事件事故は除外'}
 - テンション: ${filters.tension} (${filters.tension === 'high' ? 'エネルギッシュで盛り上がる' : filters.tension === 'medium' ? 'バランス良く親しみやすい' : '落ち着いて丁寧な'})
 - 配信者が話しやすく、視聴者が参加しやすいもの
 
 【カテゴリ定義（厳密に従ってください）】
-- ニュース: 政治・経済・社会・テクノロジー・国際情勢等の時事ニュース
-- エンタメ: アニメ・映画・音楽・芸能・ゲーム・スポーツ
-- SNS: Twitter/X・Instagram・YouTube等のプラットフォーム動向・バズ
-- TikTok: TikTok固有のトレンド・チャレンジ・バズ動画・クリエイター話題
-- 事件事故: 事件・事故・災害・緊急事態
+- ニュース: 国内＋海外の政治・経済・社会・テクノロジー・国際情勢・海外おもしろニュース（日本だけに偏らない）
+- エンタメ: アニメ・映画・音楽・芸能・ゲーム・スポーツ・海外セレブ・ハリウッド
+- SNS: Twitter/X・Instagram・YouTube等の国内外のプラットフォーム動向・バズ
+- TikTok: TikTok固有の国内外トレンド・チャレンジ・バズ動画・クリエイター話題
+- 事件事故: 日本全国＋世界の事件・事故・災害・緊急事態（特定地域に偏らず、国際ニュースも必ず含める）
+
+【重要：多様性の確保】
+- 日本国内ニュースだけでなく、海外のおもしろニュース・珍ニュース・国際ニュースも必ず含めてください
+- 各カテゴリ内で「国内」「海外」をバランスよく混ぜること
+- 同じジャンルの話題ばかりにならないよう、幅広いテーマから選ぶこと
 
 ${categoryBalanceInstruction}
 
@@ -154,11 +173,14 @@ ${categoryBalanceInstruction}
 
 検索結果から得られた実在URLも含めてください。
 
-${previousTitles && previousTitles.length > 0 ? `【重要：以下のトピックは前回すでに生成済みです。絶対に同じ話題・類似の話題を含めないでください】
-除外リスト:
-${previousTitles.slice(0, 20).map(t => `- ${t}`).join('\n')}
+${previousTitles && previousTitles.length > 0 ? `【最重要：重複禁止ルール】
+以下のトピックは過去に生成済みです。これらと同じ話題、同じ事件、同じ人物、同じテーマの話題は一切含めないでください。
+似ている話題もNGです。完全に別の新しい話題のみを生成してください。
 
-上記と同じ内容、同じ事件、同じ人物の話題は避け、必ず新しい切り口の話題を生成してください。` : ''}`;
+■除外リスト（${previousTitles.length}件）:
+${previousTitles.slice(0, 30).map(t => `× ${t}`).join('\n')}
+
+上記の話題と少しでも被る場合は、別の話題に差し替えてください。` : ''}`;
 
       const requestBody: OpenAIResponsesRequest = {
         model: MODEL,
@@ -321,6 +343,23 @@ ${previousTitles.slice(0, 20).map(t => `- ${t}`).join('\n')}
     // カテゴリバランス調整（各カテゴリから最低1件、最大5件）
     if (filters.categories.length === 0 || filters.categories.length > 1) {
       filteredTopics = balanceTopicCategories(filteredTopics);
+    }
+
+    // サーバーサイド重複フィルタリング（プロンプトだけに頼らない二重チェック）
+    if (hasPreviousTitles) {
+      const prevSet = new Set(previousTitles!.map(t => t.toLowerCase()));
+      filteredTopics = filteredTopics.filter(topic => {
+        const titleLower = topic.title.toLowerCase();
+        // 完全一致チェック
+        if (prevSet.has(titleLower)) return false;
+        // 部分一致チェック（タイトルの50%以上が一致したら除外）
+        for (const prev of prevSet) {
+          const words = titleLower.split(/[\s、。・]+/).filter(w => w.length > 1);
+          const matchCount = words.filter(w => prev.includes(w)).length;
+          if (words.length > 0 && matchCount / words.length > 0.5) return false;
+        }
+        return true;
+      });
     }
 
     // コスト計算
