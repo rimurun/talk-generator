@@ -4,11 +4,12 @@ import { useState, useEffect } from 'react';
 import { Topic } from '@/types';
 import { storage } from '@/lib/storage';
 import { ExternalLinkIcon, StarIcon } from './icons';
-import { Star, Copy } from 'lucide-react';
+import { Star, Copy, Monitor } from 'lucide-react';
 
 interface TopicCardProps {
   topic: Topic;
   onClick: () => void;
+  onTeleprompter?: () => void;
 }
 
 // 要約テキストをクリーンアップする関数
@@ -39,18 +40,27 @@ function cleanSummaryText(summary: string): string {
     .trim();
 }
 
-export default function TopicCard({ topic, onClick }: TopicCardProps) {
+export default function TopicCard({ topic, onClick, onTeleprompter }: TopicCardProps) {
   const [isFavorite, setIsFavorite] = useState(false);
   const [copyMessage, setCopyMessage] = useState('');
   const [ngWords, setNgWords] = useState<string[]>([]);
+  // このトピックの台本が履歴に存在するか
+  const [hasScript, setHasScript] = useState(false);
 
   useEffect(() => {
     // お気に入り状態をチェック
     setIsFavorite(storage.isFavorite(topic.id));
-    
+
     // NGワードチェック
     const detected = storage.detectNgWords(topic.title + ' ' + topic.summary);
     setNgWords(detected);
+
+    // 台本生成済みかを履歴から確認
+    const history = storage.getHistory();
+    const scriptExists = history.some(
+      (h) => h.type === 'script' && h.topicId === topic.id
+    );
+    setHasScript(scriptExists);
   }, [topic.id, topic.title, topic.summary]);
 
   const getCategoryColor = (category: string) => {
@@ -171,13 +181,28 @@ export default function TopicCard({ topic, onClick }: TopicCardProps) {
         </span>
         
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          {/* テレプロンプターボタン（台本生成済みのときのみ表示） */}
+          {hasScript && onTeleprompter && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onTeleprompter();
+              }}
+              aria-label="テレプロンプターで表示"
+              title="テレプロンプターで表示"
+              className="p-1 rounded text-cyan-400 hover:text-cyan-300 hover:bg-cyan-400/10 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+            >
+              <Monitor size={16} />
+            </button>
+          )}
+
           {/* お気に入りボタン */}
-          <button 
+          <button
             onClick={toggleFavorite}
             aria-label={isFavorite ? 'お気に入りから削除' : 'お気に入りに追加'}
             className={`p-1 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${
-              isFavorite 
-                ? 'text-yellow-400 hover:text-yellow-300' 
+              isFavorite
+                ? 'text-yellow-400 hover:text-yellow-300'
                 : 'text-gray-400 hover:text-yellow-400'
             }`}
           >
@@ -185,16 +210,16 @@ export default function TopicCard({ topic, onClick }: TopicCardProps) {
           </button>
 
           {/* コピーボタン */}
-          <button 
+          <button
             onClick={copyTitle}
             aria-label="タイトルをコピー"
             className="p-1 rounded text-gray-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/50"
           >
             <Copy size={16} />
           </button>
-          
+
           {/* 外部リンクボタン */}
-          <button 
+          <button
             onClick={(e) => {
               e.stopPropagation();
               window.open(topic.sourceUrl, '_blank', 'noopener,noreferrer');

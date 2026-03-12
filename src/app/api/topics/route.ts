@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateTopicsWithWebSearch } from '@/lib/openai-responses';
+import { generateTopicsWithWebSearch, generateTopicsStream } from '@/lib/openai-responses';
 import { mockTopics } from '@/lib/mock-data';
 import { GenerateTopicsRequest, Topic } from '@/types';
 
@@ -18,6 +18,47 @@ export async function POST(request: NextRequest) {
     }
 
     const { filters, previousTitles } = body;
+
+    // ストリーミングモード: クライアントにトピックをSSE形式で1件ずつ配信
+    if (body.stream === true) {
+      // バリデーション（ストリーミング前に実施）
+      if (!Array.isArray(filters.categories) ||
+          ![15, 60, 180].includes(filters.duration) ||
+          !['low', 'medium', 'high'].includes(filters.tension) ||
+          typeof filters.tone !== 'string' || filters.tone.trim() === '') {
+        return NextResponse.json({ error: 'フィルター条件が不正です' }, { status: 400 });
+      }
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            // ストリーミングジェネレーターからトピックを1件ずつSSEとして送信
+            for await (const topic of generateTopicsStream(filters, previousTitles)) {
+              const data = JSON.stringify(topic);
+              controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+            }
+            // 完了シグナル
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+          } catch (error) {
+            console.error('ストリーミング生成エラー:', error);
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ error: '生成中にエラーが発生しました' })}\n\n`)
+            );
+            controller.close();
+          }
+        }
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
 
     if (!Array.isArray(filters.categories)) {
       return NextResponse.json(

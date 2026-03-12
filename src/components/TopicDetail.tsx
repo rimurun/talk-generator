@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import { Topic, Script, FilterOptions, GenerateScriptResponse } from '@/types';
 import { durationOptions } from '@/lib/mock-data';
 import { storage } from '@/lib/storage';
-import { Zap, MessageSquare, Star, Heart } from 'lucide-react';
+import { Zap, MessageSquare, Star, Heart, Copy, Pencil, Save, RotateCcw, Monitor } from 'lucide-react';
 import { ArrowLeftIcon, CopyIcon, RefreshIcon, ExternalLinkIcon, ClockIcon } from './icons';
 import dynamic from 'next/dynamic';
+import TeleprompterView from './TeleprompterView';
 
 const LoadingSpinner = dynamic(() => import('./LoadingSpinner'), {
   loading: () => <div className="animate-pulse bg-gray-700 h-8 w-8 rounded-full mx-auto"></div>
@@ -39,25 +40,52 @@ function cleanDisplayText(text: string): string {
     .trim();
 }
 
+// 編集可能な台本コンテンツの型
+interface EditableScriptContent {
+  opening: string;
+  explanation: string;
+  streamerComment: string;
+  viewerQuestions: string[];
+  expansions: string[];
+  transition: string;
+  // 事件事故用フィールド
+  factualReport: string;
+  seriousContext: string;
+  avoidanceNotes: string;
+}
+
 interface TopicDetailProps {
   topic: Topic;
   filters: FilterOptions;
   onBack: () => void;
+  // テレプロンプター直起動フラグ（TopicList から渡される）
+  autoTeleprompter?: boolean;
 }
 
-export default function TopicDetail({ topic, filters, onBack }: TopicDetailProps) {
+export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }: TopicDetailProps) {
   const [script, setScript] = useState<Script | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentDuration, setCurrentDuration] = useState<15 | 60 | 180>(filters.duration);
+  // コピー成功フィードバック用（セクション名を格納）
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
-  
+
   // お気に入り・評価機能
   const [isFavorite, setIsFavorite] = useState(false);
   const [currentRating, setCurrentRating] = useState<number>(0);
   const [ratingComment, setRatingComment] = useState('');
   const [showRatingForm, setShowRatingForm] = useState(false);
   const [ngWords, setNgWords] = useState<string[]>([]);
+
+  // テレプロンプター表示フラグ
+  const [showTeleprompter, setShowTeleprompter] = useState(false);
+
+  // 編集モード関連の状態
+  const [isEditMode, setIsEditMode] = useState(false);
+  // 編集中のコンテンツ（AIオリジナルとは別に管理）
+  const [editedContent, setEditedContent] = useState<EditableScriptContent | null>(null);
+  // ローカルストレージ保存キー（トピックIDとDurationで一意化）
+  const editStorageKey = `talkgen_edit_${topic.id}_${currentDuration}`;
 
   useEffect(() => {
     loadScript();
@@ -69,6 +97,8 @@ export default function TopicDetail({ topic, filters, onBack }: TopicDetailProps
     if (script) {
       checkRating();
       checkScriptNgWords();
+      // スクリプト読み込み時に保存済み編集データを復元
+      loadEditedContent();
     }
   }, [script]);
 
@@ -100,6 +130,37 @@ export default function TopicDetail({ topic, filters, onBack }: TopicDetailProps
       setCurrentRating(rating.rating);
       setRatingComment(rating.comment || '');
     }
+  };
+
+  // ローカルストレージから編集済みコンテンツを読み込む
+  const loadEditedContent = () => {
+    if (typeof window === 'undefined' || !script) return;
+    const saved = localStorage.getItem(editStorageKey);
+    if (saved) {
+      try {
+        setEditedContent(JSON.parse(saved));
+      } catch {
+        // パースエラーは無視
+      }
+    } else {
+      // 保存データがない場合はAI生成コンテンツで初期化
+      initEditedContentFromScript(script);
+    }
+  };
+
+  // scriptからeditedContentを初期化するヘルパー
+  const initEditedContentFromScript = (s: Script) => {
+    setEditedContent({
+      opening: s.content.opening || '',
+      explanation: s.content.explanation || '',
+      streamerComment: s.content.streamerComment || '',
+      viewerQuestions: s.content.viewerQuestions || [],
+      expansions: s.content.expansions || [],
+      transition: s.content.transition || '',
+      factualReport: s.content.factualReport || '',
+      seriousContext: s.content.seriousContext || '',
+      avoidanceNotes: s.content.avoidanceNotes || '',
+    });
   };
 
   const loadScript = async () => {
@@ -154,6 +215,11 @@ export default function TopicDetail({ topic, filters, onBack }: TopicDetailProps
         cached: data.cached || false
       });
 
+      // TopicCard のテレプロンプターボタンから起動した場合、自動でテレプロンプターを開く
+      if (autoTeleprompter) {
+        setShowTeleprompter(true);
+      }
+
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '台本生成中にエラーが発生しました。もう一度お試しください。';
       setError(errorMessage);
@@ -170,6 +236,9 @@ export default function TopicDetail({ topic, filters, onBack }: TopicDetailProps
     setRatingComment('');
     setLoading(true);
     setError(null);
+    // 尺変更時は編集モードを解除
+    setIsEditMode(false);
+    setEditedContent(null);
 
     try {
       const response = await fetch('/api/script', {
@@ -232,7 +301,7 @@ export default function TopicDetail({ topic, filters, onBack }: TopicDetailProps
     if (isFavorite) {
       // お気に入りから削除
       const favorites = storage.getFavorites();
-      const favoriteToRemove = favorites.find(f => 
+      const favoriteToRemove = favorites.find(f =>
         (f.topicId === topic.id && f.type === 'topic' && !f.scriptId) ||
         (f.topicId === topic.id && f.scriptId === script?.id)
       );
@@ -267,6 +336,7 @@ export default function TopicDetail({ topic, filters, onBack }: TopicDetailProps
     setShowRatingForm(false);
   };
 
+  // テキストをクリップボードにコピーし、2秒後にフィードバックをリセット
   const copyToClipboard = async (text: string, type: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -277,44 +347,137 @@ export default function TopicDetail({ topic, filters, onBack }: TopicDetailProps
     }
   };
 
-  const formatScriptForCopy = (script: Script) => {
+  // 現在表示中のコンテンツを取得（編集済みがあれば優先）
+  const getDisplayContent = (): EditableScriptContent | null => {
+    if (editedContent) return editedContent;
+    if (!script) return null;
+    return {
+      opening: script.content.opening || '',
+      explanation: script.content.explanation || '',
+      streamerComment: script.content.streamerComment || '',
+      viewerQuestions: script.content.viewerQuestions || [],
+      expansions: script.content.expansions || [],
+      transition: script.content.transition || '',
+      factualReport: script.content.factualReport || '',
+      seriousContext: script.content.seriousContext || '',
+      avoidanceNotes: script.content.avoidanceNotes || '',
+    };
+  };
+
+  // 全文コピー用テキストフォーマット（編集済みコンテンツ対応）
+  const formatScriptForCopy = (): string => {
+    const content = getDisplayContent();
+    if (!content) return '';
+
     if (topic.category === '事件事故') {
       return `【${topic.title}】
+カテゴリ: ${topic.category}
 
-【事実報告】
-${script.content.factualReport}
+--- 台本 ---
 
-【状況説明】
-${script.content.seriousContext}
+事実報告:
+${content.factualReport}
 
-【注意事項】
-${script.content.avoidanceNotes}
+状況説明:
+${content.seriousContext}
+
+注意事項:
+${content.avoidanceNotes}
 
 出典: ${topic.sourceUrl}`;
     }
 
     return `【${topic.title}】
+カテゴリ: ${topic.category}
 
-【つかみ】
-${script.content.opening}
+--- 台本 ---
 
-【ざっくり説明】
-${script.content.explanation}
+つかみ:
+${content.opening}
 
-【配信者コメント】
-${script.content.streamerComment}
+説明:
+${content.explanation}
 
-【視聴者参加質問】
-${script.content.viewerQuestions?.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+コメント:
+${content.streamerComment}
 
-【広げ方】
-${script.content.expansions?.map((e, i) => `${i + 1}. ${e}`).join('\n')}
+視聴者への質問:
+${content.viewerQuestions.join('\n')}
 
-【次の話題への繋ぎ】
-${script.content.transition}
+話の広げ方:
+${content.expansions.join('\n')}
+
+繋ぎ:
+${content.transition}
 
 出典: ${topic.sourceUrl}`;
   };
+
+  // 編集モード切り替え
+  const handleToggleEditMode = () => {
+    if (!isEditMode && script && !editedContent) {
+      initEditedContentFromScript(script);
+    }
+    setIsEditMode(prev => !prev);
+  };
+
+  // 編集内容をローカルストレージに保存
+  const handleSaveEdit = () => {
+    if (!editedContent || typeof window === 'undefined') return;
+    localStorage.setItem(editStorageKey, JSON.stringify(editedContent));
+    setIsEditMode(false);
+    // 保存完了フィードバック
+    setCopySuccess('saved');
+    setTimeout(() => setCopySuccess(null), 2000);
+  };
+
+  // AI生成バージョンにリセット
+  const handleResetEdit = () => {
+    if (!script) return;
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(editStorageKey);
+    }
+    initEditedContentFromScript(script);
+    setIsEditMode(false);
+  };
+
+  // editedContentの特定フィールドを更新するヘルパー
+  const updateEditedField = (field: keyof EditableScriptContent, value: string) => {
+    setEditedContent(prev => prev ? { ...prev, [field]: value } : prev);
+  };
+
+  // viewerQuestionsの個別行を更新
+  const updateViewerQuestion = (index: number, value: string) => {
+    setEditedContent(prev => {
+      if (!prev) return prev;
+      const updated = [...prev.viewerQuestions];
+      updated[index] = value;
+      return { ...prev, viewerQuestions: updated };
+    });
+  };
+
+  // expansionsの個別行を更新
+  const updateExpansion = (index: number, value: string) => {
+    setEditedContent(prev => {
+      if (!prev) return prev;
+      const updated = [...prev.expansions];
+      updated[index] = value;
+      return { ...prev, expansions: updated };
+    });
+  };
+
+  const displayContent = getDisplayContent();
+
+  // テレプロンプター表示中はオーバーレイを全画面描画
+  if (showTeleprompter && script) {
+    return (
+      <TeleprompterView
+        script={script}
+        topic={topic}
+        onExit={() => setShowTeleprompter(false)}
+      />
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -364,15 +527,15 @@ ${script.content.transition}
               </div>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2">
             {/* お気に入りボタン */}
             <button
               onClick={toggleFavorite}
               aria-label={isFavorite ? 'お気に入りから削除' : 'お気に入りに追加'}
               className={`p-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${
-                isFavorite 
-                  ? 'text-yellow-400 bg-yellow-400/10 hover:bg-yellow-400/20' 
+                isFavorite
+                  ? 'text-yellow-400 bg-yellow-400/10 hover:bg-yellow-400/20'
                   : 'text-gray-400 hover:text-yellow-400 hover:bg-yellow-400/10'
               }`}
             >
@@ -395,7 +558,7 @@ ${script.content.transition}
             </button>
           </div>
         </div>
-        
+
         <h1 className="text-2xl font-bold text-white mb-4">{cleanDisplayText(topic.title)}</h1>
         <p className="text-gray-300 leading-relaxed mb-4">{cleanDisplayText(topic.summary)}</p>
 
@@ -403,7 +566,7 @@ ${script.content.transition}
         {ngWords.length > 0 && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
             <div className="text-sm text-red-300">
-              ⚠️ NGワード検出: {ngWords.join(', ')}
+              NGワード検出: {ngWords.join(', ')}
             </div>
           </div>
         )}
@@ -426,19 +589,20 @@ ${script.content.transition}
       {loading && <LoadingSpinner />}
 
       {/* 台本表示 */}
-      {script && !loading && (
+      {script && !loading && displayContent && (
         <div className="space-y-6">
-          {/* Sticky Copy Button */}
+          {/* Sticky コピーボタンエリア */}
           <div className="sticky top-4 z-10 mb-6">
             <div className="bg-gray-900/95 backdrop-blur-sm border border-gray-600 rounded-xl p-4 shadow-xl">
-              <div className="flex items-center justify-center">
+              <div className="flex items-center justify-center gap-3 flex-wrap">
+                {/* 全文コピーボタン */}
                 <button
-                  onClick={() => copyToClipboard(formatScriptForCopy(script), 'full')}
+                  onClick={() => copyToClipboard(formatScriptForCopy(), 'full')}
                   aria-label="台本全体をクリップボードにコピー"
                   className="flex items-center space-x-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-lg focus:outline-none focus:ring-4 focus:ring-blue-300/50 transition-all duration-200 transform hover:scale-105 shadow-lg text-lg font-semibold"
                 >
-                  <CopyIcon size={24} />
-                  <span>{copySuccess === 'full' ? '✅ コピー完了!' : '📋 台本全体をコピー'}</span>
+                  <Copy size={24} />
+                  <span>{copySuccess === 'full' ? 'コピーしました' : '全文コピー'}</span>
                 </button>
               </div>
             </div>
@@ -448,7 +612,7 @@ ${script.content.transition}
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-6">
                 <h2 className="text-2xl font-semibold text-white">配信用台本</h2>
-                
+
                 {/* 尺切替ボタン */}
                 <div className="flex items-center space-x-2">
                   {durationOptions.map((option) => (
@@ -469,8 +633,32 @@ ${script.content.transition}
                   ))}
                 </div>
               </div>
-              
+
               <div className="flex items-center gap-3">
+                {/* テレプロンプターボタン */}
+                <button
+                  onClick={() => setShowTeleprompter(true)}
+                  aria-label="テレプロンプターで表示"
+                  className="flex items-center gap-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-2 px-4 rounded-lg transition-all duration-200 shadow-lg hover:shadow-cyan-500/25 focus:outline-none focus:ring-2 focus:ring-cyan-400/50"
+                >
+                  <Monitor size={16} />
+                  テレプロンプター
+                </button>
+
+                {/* 編集モードトグルボタン */}
+                <button
+                  onClick={handleToggleEditMode}
+                  aria-label={isEditMode ? '編集モードを終了' : '編集モードを開始'}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
+                    isEditMode
+                      ? 'bg-yellow-600/20 border border-yellow-500 text-yellow-300 hover:bg-yellow-600/30'
+                      : 'border border-gray-600 text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  <Pencil size={16} />
+                  {isEditMode ? '編集中' : '編集モード'}
+                </button>
+
                 {/* 評価ボタン */}
                 <button
                   onClick={() => setShowRatingForm(!showRatingForm)}
@@ -479,24 +667,56 @@ ${script.content.transition}
                   <Heart size={16} />
                   評価
                 </button>
-                
+
                 {/* 簡易コピーボタン（補助的） */}
                 <button
-                  onClick={() => copyToClipboard(formatScriptForCopy(script), 'full')}
+                  onClick={() => copyToClipboard(formatScriptForCopy(), 'full')}
                   aria-label="台本全体をクリップボードにコピー"
                   className="flex items-center space-x-2 bg-gray-600 hover:bg-gray-700 focus:bg-gray-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-300/50 transition-colors duration-200 text-sm"
                 >
                   <CopyIcon size={14} />
-                  <span>{copySuccess === 'full' ? '完了!' : 'コピー'}</span>
+                  <span>{copySuccess === 'full' ? 'コピーしました' : 'コピー'}</span>
                 </button>
               </div>
             </div>
+
+            {/* 編集モード時の保存・リセットバー */}
+            {isEditMode && (
+              <div className="bg-yellow-900/20 border border-yellow-600/50 rounded-lg p-3 mb-6 flex items-center justify-between">
+                <span className="text-sm text-yellow-300">
+                  編集モード: 各セクションのテキストを直接編集できます
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveEdit}
+                    className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm transition-colors"
+                  >
+                    <Save size={14} />
+                    保存
+                  </button>
+                  <button
+                    onClick={handleResetEdit}
+                    className="flex items-center gap-1.5 bg-gray-600 hover:bg-gray-500 text-white px-4 py-1.5 rounded-lg text-sm transition-colors"
+                  >
+                    <RotateCcw size={14} />
+                    リセット
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 保存成功フィードバック */}
+            {copySuccess === 'saved' && (
+              <div className="bg-green-900/20 border border-green-600/50 rounded-lg p-2 mb-4 text-center">
+                <span className="text-green-400 text-sm">保存しました</span>
+              </div>
+            )}
 
             {/* 評価フォーム */}
             {showRatingForm && (
               <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-4 mb-6">
                 <h3 className="text-lg font-semibold text-purple-200 mb-3">台本を評価してください</h3>
-                
+
                 {/* 星評価 */}
                 <div className="flex items-center gap-2 mb-4">
                   {[1, 2, 3, 4, 5].map((star) => (
@@ -504,8 +724,8 @@ ${script.content.transition}
                       key={star}
                       onClick={() => setCurrentRating(star)}
                       className={`w-8 h-8 rounded-full transition-colors ${
-                        star <= currentRating 
-                          ? 'text-yellow-400 hover:text-yellow-300' 
+                        star <= currentRating
+                          ? 'text-yellow-400 hover:text-yellow-300'
                           : 'text-gray-600 hover:text-gray-400'
                       }`}
                     >
@@ -569,98 +789,151 @@ ${script.content.transition}
             {topic.category === '事件事故' ? (
               // 事件事故用テンプレート
               <div className="space-y-6">
-                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
-                  <h3 className="font-semibold text-red-300 mb-2">事実報告</h3>
-                  <p className="text-gray-200 leading-relaxed">{script.content.factualReport}</p>
-                </div>
-
-                <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4">
-                  <h3 className="font-semibold text-orange-300 mb-2">状況説明</h3>
-                  <p className="text-gray-200 leading-relaxed">{script.content.seriousContext}</p>
-                </div>
-
-                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
-                  <h3 className="font-semibold text-yellow-300 mb-2">注意事項</h3>
-                  <p className="text-gray-200 leading-relaxed">{script.content.avoidanceNotes}</p>
-                </div>
+                <ScriptSection
+                  title="事実報告"
+                  content={displayContent.factualReport}
+                  colorClass="red"
+                  onCopy={() => copyToClipboard(displayContent.factualReport, 'factualReport')}
+                  copySuccess={copySuccess === 'factualReport'}
+                  isEditMode={isEditMode}
+                  onEdit={(val) => updateEditedField('factualReport', val)}
+                />
+                <ScriptSection
+                  title="状況説明"
+                  content={displayContent.seriousContext}
+                  colorClass="orange"
+                  onCopy={() => copyToClipboard(displayContent.seriousContext, 'seriousContext')}
+                  copySuccess={copySuccess === 'seriousContext'}
+                  isEditMode={isEditMode}
+                  onEdit={(val) => updateEditedField('seriousContext', val)}
+                />
+                <ScriptSection
+                  title="注意事項"
+                  content={displayContent.avoidanceNotes}
+                  colorClass="yellow"
+                  onCopy={() => copyToClipboard(displayContent.avoidanceNotes, 'avoidanceNotes')}
+                  copySuccess={copySuccess === 'avoidanceNotes'}
+                  isEditMode={isEditMode}
+                  onEdit={(val) => updateEditedField('avoidanceNotes', val)}
+                />
               </div>
             ) : (
               // 通常トピック用テンプレート
               <div className="space-y-6">
                 <ScriptSection
                   title="つかみ"
-                  content={script.content.opening}
-                  onCopy={() => copyToClipboard(script.content.opening || '', 'opening')}
+                  content={displayContent.opening}
+                  colorClass="blue"
+                  onCopy={() => copyToClipboard(displayContent.opening, 'opening')}
                   copySuccess={copySuccess === 'opening'}
+                  isEditMode={isEditMode}
+                  onEdit={(val) => updateEditedField('opening', val)}
                 />
 
                 <ScriptSection
                   title="ざっくり説明"
-                  content={script.content.explanation}
-                  onCopy={() => copyToClipboard(script.content.explanation || '', 'explanation')}
+                  content={displayContent.explanation}
+                  colorClass="blue"
+                  onCopy={() => copyToClipboard(displayContent.explanation, 'explanation')}
                   copySuccess={copySuccess === 'explanation'}
+                  isEditMode={isEditMode}
+                  onEdit={(val) => updateEditedField('explanation', val)}
                 />
 
                 <ScriptSection
                   title="配信者コメント"
-                  content={script.content.streamerComment}
-                  onCopy={() => copyToClipboard(script.content.streamerComment || '', 'comment')}
+                  content={displayContent.streamerComment}
+                  colorClass="blue"
+                  onCopy={() => copyToClipboard(displayContent.streamerComment, 'comment')}
                   copySuccess={copySuccess === 'comment'}
+                  isEditMode={isEditMode}
+                  onEdit={(val) => updateEditedField('streamerComment', val)}
                 />
 
-                {script.content.viewerQuestions && (
+                {/* 視聴者参加質問セクション */}
+                {displayContent.viewerQuestions.length > 0 && (
                   <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="font-semibold text-purple-300">視聴者参加質問</h3>
                       <button
-                        onClick={() => copyToClipboard(script.content.viewerQuestions?.join('\n') || '', 'questions')}
-                        className="text-purple-300 hover:text-white transition-colors duration-200"
+                        onClick={() => copyToClipboard(displayContent.viewerQuestions.join('\n'), 'questions')}
+                        aria-label="視聴者参加質問をコピー"
+                        className="flex items-center gap-1.5 text-purple-300 hover:text-white transition-colors duration-200 text-sm"
                       >
-                        <CopyIcon size={16} />
+                        <Copy size={14} />
+                        <span>{copySuccess === 'questions' ? 'コピーしました' : '台本をコピー'}</span>
                       </button>
                     </div>
-                    <ul className="text-gray-200 leading-relaxed space-y-1">
-                      {script.content.viewerQuestions.map((question, index) => (
-                        <li key={index}>
-                          {index + 1}. {question}
-                        </li>
-                      ))}
-                    </ul>
-                    {copySuccess === 'questions' && (
-                      <span className="text-green-400 text-sm mt-2 block">コピー完了!</span>
+                    {isEditMode ? (
+                      <div className="space-y-2">
+                        {displayContent.viewerQuestions.map((q, i) => (
+                          <textarea
+                            key={i}
+                            value={q}
+                            onChange={(e) => updateViewerQuestion(i, e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                            rows={2}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <ul className="text-gray-200 leading-relaxed space-y-1">
+                        {displayContent.viewerQuestions.map((question, index) => (
+                          <li key={index}>
+                            {index + 1}. {question}
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
                 )}
 
-                {script.content.expansions && (
+                {/* 広げ方セクション */}
+                {displayContent.expansions.length > 0 && (
                   <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="font-semibold text-green-300">広げ方（3方向）</h3>
                       <button
-                        onClick={() => copyToClipboard(script.content.expansions?.join('\n') || '', 'expansions')}
-                        className="text-green-300 hover:text-white transition-colors duration-200"
+                        onClick={() => copyToClipboard(displayContent.expansions.join('\n'), 'expansions')}
+                        aria-label="広げ方をコピー"
+                        className="flex items-center gap-1.5 text-green-300 hover:text-white transition-colors duration-200 text-sm"
                       >
-                        <CopyIcon size={16} />
+                        <Copy size={14} />
+                        <span>{copySuccess === 'expansions' ? 'コピーしました' : '台本をコピー'}</span>
                       </button>
                     </div>
-                    <ul className="text-gray-200 leading-relaxed space-y-1">
-                      {script.content.expansions.map((expansion, index) => (
-                        <li key={index}>
-                          {index + 1}. {expansion}
-                        </li>
-                      ))}
-                    </ul>
-                    {copySuccess === 'expansions' && (
-                      <span className="text-green-400 text-sm mt-2 block">コピー完了!</span>
+                    {isEditMode ? (
+                      <div className="space-y-2">
+                        {displayContent.expansions.map((e, i) => (
+                          <textarea
+                            key={i}
+                            value={e}
+                            onChange={(ev) => updateExpansion(i, ev.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                            rows={2}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <ul className="text-gray-200 leading-relaxed space-y-1">
+                        {displayContent.expansions.map((expansion, index) => (
+                          <li key={index}>
+                            {index + 1}. {expansion}
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
                 )}
 
                 <ScriptSection
                   title="次の話題への繋ぎ"
-                  content={script.content.transition}
-                  onCopy={() => copyToClipboard(script.content.transition || '', 'transition')}
+                  content={displayContent.transition}
+                  colorClass="blue"
+                  onCopy={() => copyToClipboard(displayContent.transition, 'transition')}
                   copySuccess={copySuccess === 'transition'}
+                  isEditMode={isEditMode}
+                  onEdit={(val) => updateEditedField('transition', val)}
                 />
               </div>
             )}
@@ -671,30 +944,68 @@ ${script.content.transition}
   );
 }
 
+// カラークラスのマッピング型
+type ColorClass = 'blue' | 'red' | 'orange' | 'yellow' | 'green' | 'purple';
+
 interface ScriptSectionProps {
   title: string;
   content: string | undefined;
+  colorClass?: ColorClass;
   onCopy: () => void;
   copySuccess: boolean;
+  // 編集モード対応
+  isEditMode?: boolean;
+  onEdit?: (value: string) => void;
 }
 
-function ScriptSection({ title, content, onCopy, copySuccess }: ScriptSectionProps) {
-  if (!content) return null;
+// カラークラスを色名から実際のTailwindクラスに解決する
+const colorMap: Record<ColorClass, { bg: string; border: string; title: string; ring: string }> = {
+  blue:   { bg: 'bg-blue-500/10',   border: 'border-blue-500/30',   title: 'text-blue-300',   ring: 'focus:ring-blue-500' },
+  red:    { bg: 'bg-red-500/10',    border: 'border-red-500/30',    title: 'text-red-300',    ring: 'focus:ring-red-500' },
+  orange: { bg: 'bg-orange-500/10', border: 'border-orange-500/30', title: 'text-orange-300', ring: 'focus:ring-orange-500' },
+  yellow: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', title: 'text-yellow-300', ring: 'focus:ring-yellow-500' },
+  green:  { bg: 'bg-green-500/10',  border: 'border-green-500/30',  title: 'text-green-300',  ring: 'focus:ring-green-500' },
+  purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/30', title: 'text-purple-300', ring: 'focus:ring-purple-500' },
+};
+
+function ScriptSection({
+  title,
+  content,
+  colorClass = 'blue',
+  onCopy,
+  copySuccess,
+  isEditMode = false,
+  onEdit,
+}: ScriptSectionProps) {
+  if (!content && !isEditMode) return null;
+
+  const colors = colorMap[colorClass];
 
   return (
-    <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+    <div className={`${colors.bg} ${colors.border} border rounded-lg p-4`}>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-blue-300">{title}</h3>
+        <h3 className={`font-semibold ${colors.title}`}>{title}</h3>
+        {/* 台本をコピーボタン */}
         <button
           onClick={onCopy}
-          className="text-blue-300 hover:text-white transition-colors duration-200"
+          aria-label={`${title}をコピー`}
+          className={`flex items-center gap-1.5 ${colors.title} hover:text-white transition-colors duration-200 text-sm`}
         >
-          <CopyIcon size={16} />
+          <Copy size={14} />
+          <span>{copySuccess ? 'コピーしました' : '台本をコピー'}</span>
         </button>
       </div>
-      <p className="text-gray-200 leading-relaxed">{content}</p>
-      {copySuccess && (
-        <span className="text-green-400 text-sm mt-2 block">コピー完了!</span>
+
+      {/* 編集モード: textarea / 通常モード: テキスト表示 */}
+      {isEditMode ? (
+        <textarea
+          value={content || ''}
+          onChange={(e) => onEdit?.(e.target.value)}
+          className={`w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-200 leading-relaxed focus:outline-none focus:ring-2 ${colors.ring} resize-none`}
+          rows={4}
+        />
+      ) : (
+        <p className="text-gray-200 leading-relaxed">{content}</p>
       )}
     </div>
   );

@@ -50,6 +50,7 @@ export interface FilterOptions {
 export interface GenerateTopicsRequest {
   filters: FilterOptions;
   previousTitles?: string[]; // 前回生成したタイトル（重複防止用）
+  stream?: boolean;           // ストリーミングモード（SSE形式）を使用するか
 }
 
 export interface GenerateTopicsResponse {

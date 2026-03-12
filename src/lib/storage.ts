@@ -533,7 +533,7 @@ class StorageService {
       channelName: '',
       specialties: [],
       ngWords: [],
-      dailyLimit: 30,
+      dailyLimit: 100,
       preferredTone: 'フレンドリー',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()

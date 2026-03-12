@@ -1,7 +1,8 @@
 // 日次レート制限管理
-// 1日30回制限、午前0時（JST）でリセット
+// 1日100回制限、午前0時（JST）でリセット
+// GPT-4o-miniコスト試算: 約$0.0014/回 × 100回/日 × 30日 = $4.20/月（$33予算内）
 
-const DAILY_LIMIT = 30;
+const DAILY_LIMIT = 100;
 
 interface DailyUsage {
   date: string; // YYYY-MM-DD (JST)

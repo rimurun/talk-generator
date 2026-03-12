@@ -1,6 +1,14 @@
 import { Topic, Script, FilterOptions } from '@/types';
 import { memoryCache, createTopicsCacheKey, createScriptCacheKey } from './cache';
 
+// ストリーミングAPI用リクエスト型
+interface OpenAIStreamRequest {
+  model: string;
+  tools: Array<{ type: string }>;
+  input: string;
+  stream: true;
+}
+
 // OpenAI Responses API設定
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_RESPONSES_ENDPOINT = 'https://api.openai.com/v1/responses';
@@ -65,7 +73,7 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
     }
 
     const fuzzyMatch = memoryCache.getTopicsFuzzy(filters);
-    if (fuzzyMatch && fuzzyMatch.similarity >= 0.8) {
+    if (fuzzyMatch && fuzzyMatch.similarity >= 0.65) {
       console.log(`🔄 トピックキャッシュヒット（ファジーマッチ: ${Math.round(fuzzyMatch.similarity * 100)}%）`);
       trackUsage(0, 0, true);
       return {
@@ -192,25 +200,17 @@ ${filters.includeIncidents ? '- 事件事故: 1件（事件・事故・災害）
         ? `\n【カテゴリ詳細指定】\n${detailSummaryLines.join('\n')}`
         : '';
 
-      const input = `${todayStr} ${timeContext}の配信向けトピック生成。
-
-【重要】必ず今日（${todayStr}）時点の最新情報を検索してください。古いニュースは除外。
-
-検索: ${searchQueries.slice(0, 3).join(' / ')}
-${categoryFilter}
-${keyword ? `キーワード: ${keyword}` : ''}
-${filters.includeIncidents ? '' : '事件事故除外'}
-テンション: ${filters.tension}${detailSummary}
-
-${categoryBalanceInstruction ? '各カテゴリ均等に生成' : ''}
-
-各トピックを以下形式で10-15件生成:
-1. **[タイトル30文字以内]**
+      // 圧縮プロンプト（約40%トークン削減）
+      const input = `${todayStr}${timeContext}配信ネタ生成。最新情報のみ。
+検索: ${searchQueries.slice(0, 2).join(' / ')}
+${categoryFilter}${keyword ? `\nキーワード: ${keyword}` : ''}
+${filters.includeIncidents ? '' : '事件事故除外'}テンション: ${filters.tension}${detailSummary}
+${categoryBalanceInstruction ? '各カテゴリ均等に生成\n' : ''}
+10-15件生成（国内外バランス）:
+1. **[タイトル30字以内]**
    - カテゴリ: [ニュース/エンタメ/SNS/TikTok/海外おもしろ/事件事故]
-   - 要約: [2行以内]
+   - 要約: [2行]
    - 配信適性: [1行]
-
-国内外バランスよく。実在URLも含める。
 ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(0, 15).join(', ')}` : ''}`;
 
       const requestBody: OpenAIResponsesRequest = {
@@ -471,6 +471,180 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
 }
 
 /**
+ * ストリーミングモードでトピックを1件ずつ生成・yield
+ * OpenAI Responses APIのSSEレスポンスをパースし、
+ * 完全なトピックブロックが検出されるたびにyieldする
+ */
+export async function* generateTopicsStream(
+  filters: FilterOptions,
+  previousTitles?: string[]
+): AsyncGenerator<Topic> {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OpenAI APIキーが設定されていません');
+  }
+
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月`;
+  const todayStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+  const timeContext = now.getHours() < 12 ? '朝' : now.getHours() < 18 ? '昼' : '夜';
+
+  // カテゴリ別検索クエリ（日付付き）
+  const categoryQueries: Record<string, string> = {
+    'ニュース': `日本 最新ニュース 今日 ${todayStr} 政治 経済 社会 テクノロジー`,
+    'エンタメ': `エンタメ 最新 今週 ${dateStr} アニメ 映画 音楽 芸能 ゲーム 話題`,
+    'SNS': `SNS トレンド 今日 ${todayStr} Twitter X Instagram YouTube バズ`,
+    'TikTok': `TikTok 今日 ${todayStr} バズ チャレンジ トレンド 日本 海外`,
+    '海外おもしろ': `海外 おもしろニュース 最新 ${dateStr} 珍事件 珍ニュース 面白い ユニーク 衝撃`,
+    '事件事故': `事件 事故 災害 速報 今日 ${todayStr} 日本 世界`
+  };
+
+  const searchQueries = filters.categories.length > 0
+    ? filters.categories.map(cat => categoryQueries[cat]).filter(Boolean)
+    : Object.values(categoryQueries);
+
+  const keyword = (filters as any).keyword?.trim();
+  const categoryFilter = filters.categories.length > 0
+    ? `カテゴリ指定: ${filters.categories.join(', ')}`
+    : '全カテゴリ（バランス重視）';
+
+  // 圧縮プロンプト（ストリーミング用）
+  const input = `${todayStr}${timeContext}配信ネタ生成。最新情報のみ。
+検索: ${searchQueries.slice(0, 2).join(' / ')}
+${categoryFilter}${keyword ? `\nキーワード: ${keyword}` : ''}
+${filters.includeIncidents ? '' : '事件事故除外'}テンション: ${filters.tension}
+
+10-15件生成:
+1. **[タイトル30字以内]**
+   - カテゴリ: [ニュース/エンタメ/SNS/TikTok/海外おもしろ/事件事故]
+   - 要約: [2行]
+   - 配信適性: [1行]
+${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(0, 15).join(', ')}` : ''}`;
+
+  const requestBody: OpenAIStreamRequest = {
+    model: MODEL,
+    tools: [{ type: 'web_search_preview' }],
+    input,
+    stream: true
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 55000);
+
+  let response: Response;
+  try {
+    response = await fetch(OPENAI_RESPONSES_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal
+    });
+  } catch (fetchError: any) {
+    clearTimeout(timeoutId);
+    throw fetchError;
+  }
+
+  clearTimeout(timeoutId);
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`OpenAI API Error: ${response.status} ${response.statusText} - ${errorText}`);
+  }
+
+  // SSEストリームをテキストとして読み込み、トピックをインクリメンタルにパース
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('レスポンスボディの読み込みに失敗しました');
+  }
+
+  const decoder = new TextDecoder();
+  let accumulatedText = ''; // OpenAIからのテキストデルタを蓄積
+  let buffer = '';           // SSEイベントバッファ
+  let yieldedTopicCount = 0;
+  const yieldedTitles = new Set<string>();
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSEイベントを行単位で処理
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? ''; // 不完全な最後の行はバッファへ
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const jsonStr = line.slice(6).trim();
+        if (jsonStr === '[DONE]') break;
+
+        let event: any;
+        try {
+          event = JSON.parse(jsonStr);
+        } catch {
+          continue; // 不完全なJSONはスキップ
+        }
+
+        // テキストデルタを蓄積（output_text.delta イベント）
+        if (event.type === 'response.output_text.delta' && event.delta) {
+          accumulatedText += event.delta;
+
+          // 蓄積テキストからトピックブロックを検出してyield
+          const newTopics = extractNewTopicsFromStream(
+            accumulatedText,
+            yieldedTopicCount,
+            yieldedTitles
+          );
+
+          for (const topic of newTopics) {
+            yieldedTitles.add(topic.title.substring(0, 15));
+            yieldedTopicCount++;
+            yield topic;
+          }
+        }
+      }
+    }
+
+    // ストリーム完了後、残りのテキストから未yield分を抽出
+    const finalTopics = extractNewTopicsFromStream(
+      accumulatedText,
+      yieldedTopicCount,
+      yieldedTitles
+    );
+    for (const topic of finalTopics) {
+      yieldedTitles.add(topic.title.substring(0, 15));
+      yieldedTopicCount++;
+      yield topic;
+    }
+
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/**
+ * ストリーミング中の蓄積テキストから新規トピックを抽出
+ * 既にyield済みのタイトルは除外する
+ */
+function extractNewTopicsFromStream(
+  text: string,
+  alreadyYielded: number,
+  yieldedTitles: Set<string>
+): Topic[] {
+  // parseTopicsFromText を再利用してトピックをパース
+  const allTopics = parseTopicsFromText(text, []);
+
+  // 未yield分のみ返す
+  return allTopics.slice(alreadyYielded).filter(t => {
+    const key = t.title.substring(0, 15);
+    return !yieldedTitles.has(key);
+  });
+}
+
+/**
  * 台本生成（キャッシュ対応）- 標準Chat Completions API使用
  */
 export async function generateScriptWithCache(
@@ -529,45 +703,13 @@ export async function generateScriptWithCache(
     const maxTokens = duration === 15 ? 500 : duration === 60 ? 1000 : 2000;
     const targetChars = duration === 15 ? 100 : duration === 60 ? 400 : 1200;
     
-    // 口調プリセット別のサンプル文
-    const toneExamples: {[key: string]: string} = {
-      'フレンドリー': 'みなさん、こんにちは！今日はとっても面白い話題があるんです♪',
-      'エネルギッシュ': 'よっしゃー！みんな〜！超ヤバいニュース見つけちゃったよ！！',
-      '落ち着いた': 'こんにちは。今日は興味深い話題についてお話ししたいと思います。',
-      'コメディ重視': 'はいはい〜、今日もツッコミどころ満載なネタが来ましたよ〜',
-      'バランス重視': 'こんにちは！今回は結構話題になってるこちらをご紹介します。',
-      '事実重視': '本日、以下の件について報告いたします。'
-    };
-    
-    const systemPrompt = `あなたは配信者向け台本作成のプロです。
-
-【設定】
-- 尺: ${duration}秒 (約${targetChars}文字)
-- テンション: ${tension} (${tension === 'high' ? 'エネルギッシュで盛り上がる' : tension === 'medium' ? 'バランス良く親しみやすい' : '落ち着いて丁寧'})
-- 口調: ${tone}
-
-【${tone}の文体サンプル】
-"${toneExamples[tone] || toneExamples['バランス重視']}"
-
-${topic.category === '事件事故' ? `
-【事件事故専用テンプレート】
-以下の要素を含む台本を作成:
-- factualReport: 事実のみの冷静な報告
-- seriousContext: 深刻さを伝える背景説明
-- avoidanceNotes: 避けるべき表現や注意点
-注意: 煽らない、犯人断定しない、感情過多NG、陰謀論排除、事実ベース、シリアストーン
-` : `
-【通常トピック用テンプレート】
-以下の要素を含む台本を作成:
-1. つかみ（opening）: 15-30文字、視聴者の注意を引く導入
-2. ざっくり説明（explanation）: ${Math.floor(targetChars * 0.4)}文字程度、理解しやすい説明
-3. 配信者コメント（streamerComment）: ${Math.floor(targetChars * 0.3)}文字程度、個人的な感想
-4. 視聴者質問（viewerQuestions）: コメント参加しやすい具体的質問3つ
-5. 話の広げ方（expansions）: 関連話題への展開方向3つ
-6. 繋ぎ（transition）: 20-30文字、次話題への自然な移行
-`}
-
-【重要】指定されたトピック内容に基づいて台本を作成し、JSON形式で返してください。マークダウン不要。`;
+    // 圧縮済みシステムプロンプト（冗長なトーン例・重複指示を削除）
+    const systemPrompt = `配信者向け台本作成。
+尺: ${duration}秒(約${targetChars}文字) / テンション: ${tension} / 口調: ${tone}
+${topic.category === '事件事故'
+  ? '事件事故モード: 事実のみ・煽り禁止・断定禁止・シリアストーン。JSON返答のみ。'
+  : `通常モード: opening(導入)・explanation(説明${Math.floor(targetChars * 0.4)}字)・streamerComment(感想${Math.floor(targetChars * 0.3)}字)・viewerQuestions(3問)・expansions(展開3件)・transition(繋ぎ)。JSON返答のみ。`
+}`;
 
     const userPrompt = `以下のトピック情報に基づいて台本を作成してください:
 
@@ -1227,7 +1369,7 @@ export function trackUsage(tokens: number, cost: number, cached: boolean) {
 }
 
 /**
- * API使用統計（リアルタイムトラッキング、1日30回制限）
+ * API使用統計（リアルタイムトラッキング、1日100回制限）
  */
 export async function getApiUsageStats() {
   resetTrackerIfNewDay();
@@ -1238,7 +1380,7 @@ export async function getApiUsageStats() {
     tokensUsed: usageTracker.tokensUsed,
     tokensLimit: 100000,
     requestsUsed: usageTracker.requestsUsed,
-    requestsLimit: 30,
+    requestsLimit: 100,
     estimatedCost: usageTracker.estimatedCost,
     cacheHitRate: Math.round(cacheHitRate * 100) / 100,
   };

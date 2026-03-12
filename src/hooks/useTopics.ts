@@ -46,13 +46,13 @@ export function useTopics(): UseTopicsReturn {
     }
   };
 
-  // レート制限チェック（1日30回、JST 0時リセット）
+  // レート制限チェック（1日100回、JST 0時リセット）
   const checkRateLimit = (): boolean => {
     const rateLimit = storage.getTodayRateLimit();
-    const dailyLimit = 30;
-    
+    const dailyLimit = 100;
+
     const totalRequests = rateLimit.topicRequests + rateLimit.scriptRequests;
-    
+
     if (totalRequests >= dailyLimit) {
       // 次のリセットまでの時間を計算
       const now = new Date();
@@ -64,18 +64,94 @@ export function useTopics(): UseTopicsReturn {
       const h = Math.floor(ms / 3600000);
       const m = Math.floor((ms % 3600000) / 60000);
       const timeStr = h > 0 ? `${h}時間${m}分` : `${m}分`;
-      
+
       setError(`本日の生成上限（${dailyLimit}回）に達しました。リセットまで${timeStr}です（毎日0:00にリセット）`);
       return false;
     }
-    
+
     return true;
   };
 
-  // トピック生成
+  // ストリーミングモードでトピックを1件ずつ受信・表示
+  const generateTopicsStreaming = async (filters: FilterOptions) => {
+    const previousTitles = storage.getPreviousTopicTitles();
+
+    const response = await fetch('/api/topics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filters, previousTitles, stream: true }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'トピック生成に失敗しました' }));
+      throw new Error(errorData.error || 'トピック生成に失敗しました');
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('ストリームの読み込みに失敗しました');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const receivedTopics: Topic[] = [];
+
+    setTopics([]); // ストリーミング前に一旦クリアして1件ずつ追加
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (payload === '[DONE]') break;
+
+          try {
+            const topic: Topic = JSON.parse(payload);
+            // エラーペイロードではなく正常なトピックであることを確認
+            if (topic.id && topic.title) {
+              receivedTopics.push(topic);
+              // Reactステートを更新してUIにトピックを追加
+              setTopics(prev => [...prev, topic]);
+              setProgressStep(`🤖 ${receivedTopics.length}件取得中...`);
+            }
+          } catch {
+            // JSONパース失敗は無視
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    // ストリーミング完了後にストレージへ保存
+    if (receivedTopics.length > 0) {
+      storage.setLastTopics(receivedTopics);
+      storage.setLastFilters(filters);
+      const newTitles = receivedTopics.map((t: Topic) => t.title);
+      storage.savePreviousTopicTitles(newTitles);
+      // レート制限カウンター更新（ストリーミングはコスト0でカウント）
+      storage.updateRateLimit('topic', 0);
+      storage.addHistory({
+        type: 'topic',
+        timestamp: new Date().toISOString(),
+        filters,
+        cost: 0,
+        cached: false
+      });
+    }
+
+    return receivedTopics;
+  };
+
+  // トピック生成（ストリーミングをデフォルトとして使用）
   const generateTopics = useCallback(async (filters: FilterOptions) => {
     if (loading || isOnCooldown) return;
-    
+
     if (!checkRateLimit()) return;
 
     try {
@@ -84,75 +160,58 @@ export function useTopics(): UseTopicsReturn {
       setLastFilters(filters);
       setLastRequestTime(Date.now());
 
-      // 進捗表示（実際のAPI待機に合わせた段階表示）
       setProgressStep('🔍 ニュース検索中...');
 
-      // 前回のタイトルを取得（重複防止）
-      const previousTitles = storage.getPreviousTopicTitles();
+      // ストリーミングで生成（1件ずつ表示）
+      await generateTopicsStreaming(filters);
 
-      // API呼び出しと進捗を並行実行
-      const progressTimer = setTimeout(() => setProgressStep('📝 トピック整理中...'), 3000);
-      const progressTimer2 = setTimeout(() => setProgressStep('🤖 AI分析中...'), 8000);
-
-      const response = await fetch('/api/topics', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ filters, previousTitles }),
-      });
-
-      clearTimeout(progressTimer);
-      clearTimeout(progressTimer2);
-      setProgressStep('🤖 AI分析中...');
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        let errorMessage = errorData.error || 'トピック生成に失敗しました';
-        
-        // エラーメッセージを分かりやすく変換
-        if (response.status === 429) {
-          errorMessage = 'API制限に達しました。少し時間をおいてから再試行してください';
-        } else if (response.status >= 500) {
-          errorMessage = 'ネットワークエラー：サーバーに問題が発生している可能性があります';
-        }
-        
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
       setProgressStep('✅ 完了！');
-
-      setTopics(data.topics);
-      storage.setLastTopics(data.topics);
-      storage.setLastFilters(filters);
-
-      // 生成したタイトルを保存（次回重複防止）
-      if (data.topics && data.topics.length > 0) {
-        const newTitles = data.topics.map((t: Topic) => t.title);
-        storage.savePreviousTopicTitles(newTitles);
-      }
-
-      // レート制限カウンター更新
-      if (!data.cached) {
-        storage.updateRateLimit('topic', data.cost || 0);
-      }
-
-      // 履歴に追加
-      storage.addHistory({
-        type: 'topic',
-        timestamp: new Date().toISOString(),
-        filters,
-        cost: data.cost || 0,
-        cached: data.cached || false
-      });
-
-      // 使用量更新
       updateUsage();
 
     } catch (error) {
       console.error('トピック生成エラー:', error);
-      setError(error instanceof Error ? error.message : 'トピック生成中にエラーが発生しました');
+      // ストリーミング失敗時は非ストリーミングにフォールバック
+      try {
+        console.log('ストリーミング失敗、通常モードにフォールバック...');
+        const previousTitles = storage.getPreviousTopicTitles();
+        const response = await fetch('/api/topics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filters, previousTitles }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          let errorMessage = errorData.error || 'トピック生成に失敗しました';
+          if (response.status === 429) {
+            errorMessage = 'API制限に達しました。少し時間をおいてから再試行してください';
+          } else if (response.status >= 500) {
+            errorMessage = 'ネットワークエラー：サーバーに問題が発生している可能性があります';
+          }
+          throw new Error(errorMessage);
+        }
+
+        const data = await response.json();
+        setTopics(data.topics);
+        storage.setLastTopics(data.topics);
+        storage.setLastFilters(filters);
+        if (data.topics && data.topics.length > 0) {
+          storage.savePreviousTopicTitles(data.topics.map((t: Topic) => t.title));
+        }
+        if (!data.cached) {
+          storage.updateRateLimit('topic', data.cost || 0);
+        }
+        storage.addHistory({
+          type: 'topic',
+          timestamp: new Date().toISOString(),
+          filters,
+          cost: data.cost || 0,
+          cached: data.cached || false
+        });
+        updateUsage();
+      } catch (fallbackError) {
+        setError(fallbackError instanceof Error ? fallbackError.message : 'トピック生成中にエラーが発生しました');
+      }
     } finally {
       setLoading(false);
       setProgressStep(null);

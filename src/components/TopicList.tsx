@@ -14,14 +14,25 @@ interface TopicListProps {
 
 export default function TopicList({ topics, filters, onTopicSelect, onBackToList }: TopicListProps) {
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
+  // テレプロンプター直起動フラグ（TopicCard から起動した場合に true）
+  const [launchTeleprompter, setLaunchTeleprompter] = useState(false);
 
   const handleTopicSelect = (topic: Topic) => {
+    setLaunchTeleprompter(false);
+    setSelectedTopic(topic);
+    onTopicSelect?.();
+  };
+
+  // TopicCard のテレプロンプターアイコンから起動
+  const handleTeleprompterLaunch = (topic: Topic) => {
+    setLaunchTeleprompter(true);
     setSelectedTopic(topic);
     onTopicSelect?.();
   };
 
   const handleBackToList = () => {
     setSelectedTopic(null);
+    setLaunchTeleprompter(false);
     onBackToList?.();
   };
 
@@ -31,6 +42,7 @@ export default function TopicList({ topics, filters, onTopicSelect, onBackToList
         topic={selectedTopic}
         filters={filters}
         onBack={handleBackToList}
+        autoTeleprompter={launchTeleprompter}
       />
     );
   }
@@ -77,6 +89,7 @@ export default function TopicList({ topics, filters, onTopicSelect, onBackToList
               <TopicCard
                 topic={topic}
                 onClick={() => handleTopicSelect(topic)}
+                onTeleprompter={() => handleTeleprompterLaunch(topic)}
               />
             </div>
           ))}
