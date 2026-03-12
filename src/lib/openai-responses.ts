@@ -105,8 +105,37 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
         '事件事故': `事件 事故 災害 速報 今日 ${todayStr} 日本 世界`
       };
 
+      // カテゴリ詳細フィルターの適用（期間・地域・サブカテゴリでクエリを強化）
+      const categoryDetails = (filters as any).categoryDetails as Record<string, any> | undefined;
+      if (categoryDetails) {
+        for (const [cat, detail] of Object.entries(categoryDetails)) {
+          if (!detail) continue;
+          const baseQuery = categoryQueries[cat as keyof typeof categoryQueries];
+          if (!baseQuery) continue;
+
+          // 期間フィルター文字列
+          let timeQuery = '';
+          if (detail.timePeriod === 'today')  timeQuery = `今日 ${todayStr}`;
+          else if (detail.timePeriod === 'week')  timeQuery = `今週 ${dateStr}`;
+          else if (detail.timePeriod === 'month') timeQuery = `今月 ${dateStr}`;
+
+          // 地域フィルター文字列
+          let regionQuery = '';
+          if (detail.region === 'domestic')      regionQuery = '日本 国内';
+          else if (detail.region === 'international') regionQuery = '海外 世界 国際';
+          // 'both' の場合はフィルターなし
+
+          // サブカテゴリのラベルを日本語で連結
+          const subCatLabels = (detail.subCategories as string[] || []).join(' ');
+
+          // クエリを再構築（詳細条件を先頭に配置してウェイトを上げる）
+          (categoryQueries as Record<string, string>)[cat] =
+            `${timeQuery} ${regionQuery} ${subCatLabels} ${baseQuery}`.replace(/\s+/g, ' ').trim();
+        }
+      }
+
       // カテゴリフィルターに応じた検索クエリ選択
-      let searchQueries = filters.categories.length > 0 
+      let searchQueries = filters.categories.length > 0
         ? filters.categories.map(cat => categoryQueries[cat as keyof typeof categoryQueries]).filter(Boolean)
         : Object.values(categoryQueries);
 
@@ -148,6 +177,21 @@ ${filters.includeIncidents ? '- 事件事故: 1件（事件・事故・災害）
 ※ニュース・エンタメに偏らず、全カテゴリから均等に生成必須` 
         : '';
       
+      // カテゴリ詳細フィルターのサマリーをプロンプト用に生成
+      const detailSummaryLines: string[] = [];
+      if (categoryDetails) {
+        for (const [cat, detail] of Object.entries(categoryDetails)) {
+          if (!detail) continue;
+          const periodLabel = detail.timePeriod === 'today' ? '今日' : detail.timePeriod === 'week' ? '今週' : '今月';
+          const regionLabel = detail.region === 'domestic' ? '国内のみ' : detail.region === 'international' ? '海外のみ' : '国内外両方';
+          const subLabel = (detail.subCategories as string[]).length > 0 ? `サブ: ${(detail.subCategories as string[]).join('/')}` : '';
+          detailSummaryLines.push(`  - ${cat}: 期間=${periodLabel}, 地域=${regionLabel}${subLabel ? `, ${subLabel}` : ''}`);
+        }
+      }
+      const detailSummary = detailSummaryLines.length > 0
+        ? `\n【カテゴリ詳細指定】\n${detailSummaryLines.join('\n')}`
+        : '';
+
       const input = `${todayStr} ${timeContext}の配信向けトピック生成。
 
 【重要】必ず今日（${todayStr}）時点の最新情報を検索してください。古いニュースは除外。
@@ -156,7 +200,7 @@ ${filters.includeIncidents ? '- 事件事故: 1件（事件・事故・災害）
 ${categoryFilter}
 ${keyword ? `キーワード: ${keyword}` : ''}
 ${filters.includeIncidents ? '' : '事件事故除外'}
-テンション: ${filters.tension}
+テンション: ${filters.tension}${detailSummary}
 
 ${categoryBalanceInstruction ? '各カテゴリ均等に生成' : ''}
 

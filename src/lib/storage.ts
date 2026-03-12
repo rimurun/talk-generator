@@ -103,6 +103,25 @@ interface RatingRow {
 class StorageService {
   private isClient = typeof window !== 'undefined';
 
+  // ユーザーIDごとにデータをスコープするためのフィールド（デフォルトはguest）
+  private userId: string = 'guest';
+
+  /**
+   * ユーザーIDを設定する
+   * ログイン・ログアウト時に AuthProvider から呼び出される
+   */
+  setUserId(userId: string | null): void {
+    this.userId = userId || 'guest';
+  }
+
+  /**
+   * ユーザースコープ付きのキーを生成する
+   * 例: talkgen_abc123_profile
+   */
+  private scopedKey(key: string): string {
+    return `talkgen_${this.userId}_${key}`;
+  }
+
   /**
    * Supabase クライアントを取得（クライアントサイドのみ）
    */
@@ -155,7 +174,7 @@ class StorageService {
 
   getProfile(): UserProfile | null {
     if (!this.isClient) return null;
-    const data = localStorage.getItem('talk-generator-profile');
+    const data = localStorage.getItem(this.scopedKey('profile'));
     return data ? JSON.parse(data) : null;
   }
 
@@ -187,7 +206,7 @@ class StorageService {
       ...profile,
       updatedAt: new Date().toISOString()
     };
-    localStorage.setItem('talk-generator-profile', JSON.stringify(updatedProfile));
+    localStorage.setItem(this.scopedKey('profile'), JSON.stringify(updatedProfile));
   }
 
   // ===========================================================
@@ -222,7 +241,7 @@ class StorageService {
 
   getFavorites(): FavoriteItem[] {
     if (!this.isClient) return [];
-    const data = localStorage.getItem('talk-generator-favorites');
+    const data = localStorage.getItem(this.scopedKey('favorites'));
     return data ? JSON.parse(data) : [];
   }
 
@@ -255,7 +274,7 @@ class StorageService {
       addedAt: new Date().toISOString()
     };
     favorites.unshift(newItem);
-    localStorage.setItem('talk-generator-favorites', JSON.stringify(favorites.slice(0, 100)));
+    localStorage.setItem(this.scopedKey('favorites'), JSON.stringify(favorites.slice(0, 100)));
   }
 
   async removeFavoriteAsync(id: string): Promise<void> {
@@ -273,7 +292,7 @@ class StorageService {
   removeFavorite(id: string): void {
     if (!this.isClient) return;
     const favorites = this.getFavorites().filter(item => item.id !== id);
-    localStorage.setItem('talk-generator-favorites', JSON.stringify(favorites));
+    localStorage.setItem(this.scopedKey('favorites'), JSON.stringify(favorites));
   }
 
   isFavorite(topicId: string, scriptId?: string): boolean {
@@ -317,7 +336,7 @@ class StorageService {
 
   getHistory(): GenerationHistory[] {
     if (!this.isClient) return [];
-    const data = localStorage.getItem('talk-generator-history');
+    const data = localStorage.getItem(this.scopedKey('history'));
     return data ? JSON.parse(data) : [];
   }
 
@@ -350,7 +369,7 @@ class StorageService {
       id: `hist-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     };
     history.unshift(newItem);
-    localStorage.setItem('talk-generator-history', JSON.stringify(history.slice(0, 20)));
+    localStorage.setItem(this.scopedKey('history'), JSON.stringify(history.slice(0, 20)));
   }
 
   async clearHistoryAsync(): Promise<void> {
@@ -365,7 +384,7 @@ class StorageService {
 
   clearHistory(): void {
     if (!this.isClient) return;
-    localStorage.removeItem('talk-generator-history');
+    localStorage.removeItem(this.scopedKey('history'));
   }
 
   // ===========================================================
@@ -395,7 +414,7 @@ class StorageService {
 
   getRatings(): ScriptRating[] {
     if (!this.isClient) return [];
-    const data = localStorage.getItem('talk-generator-ratings');
+    const data = localStorage.getItem(this.scopedKey('ratings'));
     return data ? JSON.parse(data) : [];
   }
 
@@ -431,7 +450,7 @@ class StorageService {
     } else {
       ratings.push(newRating);
     }
-    localStorage.setItem('talk-generator-ratings', JSON.stringify(ratings));
+    localStorage.setItem(this.scopedKey('ratings'), JSON.stringify(ratings));
   }
 
   getRating(scriptId: string): ScriptRating | null {
@@ -449,7 +468,7 @@ class StorageService {
     if (!this.isClient) {
       return { date: today, topicRequests: 0, scriptRequests: 0, totalCost: 0 };
     }
-    const data = localStorage.getItem('talk-generator-ratelimit');
+    const data = localStorage.getItem(this.scopedKey('ratelimit'));
     const rateLimit: RateLimit = data ? JSON.parse(data) : { date: today, topicRequests: 0, scriptRequests: 0, totalCost: 0 };
     if (rateLimit.date !== today) {
       return { date: today, topicRequests: 0, scriptRequests: 0, totalCost: 0 };
@@ -466,7 +485,7 @@ class StorageService {
       rateLimit.scriptRequests++;
     }
     rateLimit.totalCost += cost;
-    localStorage.setItem('talk-generator-ratelimit', JSON.stringify(rateLimit));
+    localStorage.setItem(this.scopedKey('ratelimit'), JSON.stringify(rateLimit));
   }
 
   // ===========================================================
@@ -529,7 +548,7 @@ class StorageService {
 
   getPreviousTopicTitles(): string[] {
     if (!this.isClient) return [];
-    const data = localStorage.getItem('talk-generator-prev-titles');
+    const data = localStorage.getItem(this.scopedKey('prev-titles'));
     return data ? JSON.parse(data) : [];
   }
 
@@ -537,7 +556,7 @@ class StorageService {
     if (!this.isClient) return;
     const all = [...titles, ...this.getPreviousTopicTitles()];
     const unique = [...new Set(all)].slice(0, 50);
-    localStorage.setItem('talk-generator-prev-titles', JSON.stringify(unique));
+    localStorage.setItem(this.scopedKey('prev-titles'), JSON.stringify(unique));
   }
 
   // ===========================================================
@@ -546,13 +565,13 @@ class StorageService {
 
   getLastTopics(): Topic[] {
     if (!this.isClient) return [];
-    const data = localStorage.getItem('talk-generator-last-topics');
+    const data = localStorage.getItem(this.scopedKey('last-topics'));
     if (!data) return [];
     try {
       const parsed = JSON.parse(data);
       // 24時間以上前のデータは破棄
       if (parsed.savedAt && Date.now() - new Date(parsed.savedAt).getTime() > 24 * 60 * 60 * 1000) {
-        localStorage.removeItem('talk-generator-last-topics');
+        localStorage.removeItem(this.scopedKey('last-topics'));
         return [];
       }
       return parsed.topics || [];
@@ -563,7 +582,7 @@ class StorageService {
 
   setLastTopics(topics: Topic[]): void {
     if (!this.isClient) return;
-    localStorage.setItem('talk-generator-last-topics', JSON.stringify({
+    localStorage.setItem(this.scopedKey('last-topics'), JSON.stringify({
       topics,
       savedAt: new Date().toISOString()
     }));
@@ -571,7 +590,7 @@ class StorageService {
 
   getLastFilters(): import('@/types').FilterOptions | null {
     if (!this.isClient) return null;
-    const data = localStorage.getItem('talk-generator-last-filters');
+    const data = localStorage.getItem(this.scopedKey('last-filters'));
     if (!data) return null;
     try {
       return JSON.parse(data);
@@ -582,7 +601,7 @@ class StorageService {
 
   setLastFilters(filters: import('@/types').FilterOptions): void {
     if (!this.isClient) return;
-    localStorage.setItem('talk-generator-last-filters', JSON.stringify(filters));
+    localStorage.setItem(this.scopedKey('last-filters'), JSON.stringify(filters));
   }
 
   // ===========================================================
@@ -592,15 +611,15 @@ class StorageService {
   clearAllData(): void {
     if (!this.isClient) return;
     const keys = [
-      'talk-generator-profile',
-      'talk-generator-favorites',
-      'talk-generator-history',
-      'talk-generator-ratings',
-      'talk-generator-ratelimit',
-      'talk-generator-prev-titles',
-      'talk-generator-daily-usage',
-      'talk-generator-last-topics',
-      'talk-generator-last-filters'
+      this.scopedKey('profile'),
+      this.scopedKey('favorites'),
+      this.scopedKey('history'),
+      this.scopedKey('ratings'),
+      this.scopedKey('ratelimit'),
+      this.scopedKey('prev-titles'),
+      this.scopedKey('daily-usage'),
+      this.scopedKey('last-topics'),
+      this.scopedKey('last-filters'),
     ];
     keys.forEach(key => localStorage.removeItem(key));
   }
@@ -629,13 +648,13 @@ class StorageService {
         this.setProfile(data.profile);
       }
       if (data.favorites) {
-        localStorage.setItem('talk-generator-favorites', JSON.stringify(data.favorites));
+        localStorage.setItem(this.scopedKey('favorites'), JSON.stringify(data.favorites));
       }
       if (data.history) {
-        localStorage.setItem('talk-generator-history', JSON.stringify(data.history));
+        localStorage.setItem(this.scopedKey('history'), JSON.stringify(data.history));
       }
       if (data.ratings) {
-        localStorage.setItem('talk-generator-ratings', JSON.stringify(data.ratings));
+        localStorage.setItem(this.scopedKey('ratings'), JSON.stringify(data.ratings));
       }
     } catch (error) {
       console.error('Data import failed:', error);
@@ -645,3 +664,11 @@ class StorageService {
 }
 
 export const storage = new StorageService();
+
+/**
+ * ユーザーIDをストレージに設定するユーティリティ関数
+ * AuthProvider から呼び出されることを想定
+ */
+export function setStorageUser(userId: string | null): void {
+  storage.setUserId(userId);
+}

@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase';
+import { setStorageUser } from '@/lib/storage';
 
 // 認証状態の型定義
 interface AuthState {
@@ -47,6 +48,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     sb.auth.getSession().then(({ data }) => {
       const u = data.session?.user;
       setUser(u ? { id: u.id, email: u.email || '' } : null);
+      // ストレージのユーザースコープを初期化
+      setStorageUser(u ? u.id : null);
       setLoading(false);
     });
 
@@ -54,6 +57,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
       const u = session?.user;
       setUser(u ? { id: u.id, email: u.email || '' } : null);
+      // 認証状態変更時にストレージのユーザースコープを更新
+      setStorageUser(session?.user ? session.user.id : null);
     });
 
     return () => subscription.unsubscribe();
@@ -82,6 +87,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     const sb = getSupabaseClient();
     if (sb) await sb.auth.signOut();
     setUser(null);
+    // ログアウト時はストレージをguestスコープに戻す
+    setStorageUser(null);
   };
 
   return (

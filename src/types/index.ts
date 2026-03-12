@@ -29,6 +29,13 @@ export interface Script {
   };
 }
 
+// カテゴリ詳細フィルター
+export interface CategoryDetailFilter {
+  timePeriod: 'today' | 'week' | 'month';
+  region: 'domestic' | 'international' | 'both';
+  subCategories: string[];
+}
+
 export interface FilterOptions {
   categories: string[];
   includeIncidents: boolean;
@@ -36,6 +43,7 @@ export interface FilterOptions {
   tension: 'low' | 'medium' | 'high';
   tone: string;
   keyword?: string; // フリーワード検索
+  categoryDetails?: Record<string, CategoryDetailFilter>; // カテゴリ別詳細フィルター
 }
 
 // API リクエスト・レスポンス型

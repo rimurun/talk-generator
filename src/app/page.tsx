@@ -2,13 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { FilterOptions } from '@/types';
+import { useRouter } from 'next/navigation';
+import { FilterOptions, CategoryDetailFilter } from '@/types';
 import { categoryOptions, durationOptions, tensionOptions, tonePresets } from '@/lib/mock-data';
 import { useTopics } from '@/hooks/useTopics';
 import { storage } from '@/lib/storage';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { TopicListSkeleton } from '@/components/TopicCardSkeleton';
-import { Zap, Star, DollarSign, Clock, AlertTriangle, Settings, Sparkles } from 'lucide-react';
+import CategoryDetailModal from '@/components/CategoryDetailModal';
+import { Zap, Star, DollarSign, Clock, AlertTriangle, Settings, Sparkles, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '@/components/AuthProvider';
 
 // 動的インポート（First Load JS削減）
 const TopicList = dynamic(() => import('@/components/TopicList'), {
@@ -19,15 +22,26 @@ const TopicList = dynamic(() => import('@/components/TopicList'), {
 });
 
 export default function Home() {
+  // 認証状態の確認
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  // 未認証ユーザーをログインページにリダイレクト
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
   // カスタムhookで状態管理を簡素化
-  const { 
-    topics, 
-    loading, 
-    error, 
-    usage, 
-    generateTopics, 
+  const {
+    topics,
+    loading,
+    error,
+    usage,
+    generateTopics,
     batchGenerate,
-    clearError, 
+    clearError,
     isOnCooldown,
     retryGeneration,
     progressStep,
@@ -47,6 +61,8 @@ export default function Home() {
   const [batchDiversityMode, setBatchDiversityMode] = useState(true);
   const [profile, setProfile] = useState<import('@/lib/storage').UserProfile | null>(null);
   const [detailMode, setDetailMode] = useState(false); // 台本詳細表示中はフィルター非表示
+  // カテゴリ詳細モーダル用：現在開いているカテゴリ名
+  const [detailCategory, setDetailCategory] = useState<string | null>(null);
 
   // プロファイル・前回フィルター読み込み
   useEffect(() => {
@@ -73,6 +89,22 @@ export default function Home() {
         ? prev.categories.filter(c => c !== category)
         : [...prev.categories, category]
     }));
+  };
+
+  // カテゴリ詳細フィルター適用ハンドラー
+  const handleCategoryDetailApply = (category: string, detail: CategoryDetailFilter) => {
+    setFilters(prev => ({
+      ...prev,
+      // 未選択なら選択済みに追加
+      categories: prev.categories.includes(category)
+        ? prev.categories
+        : [...prev.categories, category],
+      categoryDetails: {
+        ...prev.categoryDetails,
+        [category]: detail,
+      },
+    }));
+    setDetailCategory(null);
   };
 
   const handleSelectAllCategories = () => {
@@ -114,6 +146,15 @@ export default function Home() {
   const totalRequests = rateLimit.topicRequests + rateLimit.scriptRequests;
   const remainingRequests = Math.max(0, dailyLimit - totalRequests);
   const isNearLimit = remainingRequests <= 5;
+
+  // 認証確認中またはリダイレクト待機中はローディングスピナーを表示
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -258,23 +299,40 @@ export default function Home() {
             </p>
           )}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {categoryOptions.map((category) => (
-              <button
-                key={category.value}
-                onClick={() => handleCategoryChange(category.value)}
-                className={`py-3 px-4 min-h-[48px] rounded-lg border transition-all duration-200 touch-manipulation text-sm md:text-base font-medium ${
-                  filters.categories.includes(category.value)
-                    ? 'bg-purple-600 border-purple-500 text-white'
-                    : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 active:bg-gray-500'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  {category.value === '事件事故' && <span className="text-xs">⚠️</span>}
-                  {category.label}
-                </span>
-              </button>
-            ))}
+            {categoryOptions.map((category) => {
+              // 詳細フィルターが設定済みかどうか
+              const hasDetail = !!(filters.categoryDetails?.[category.value]);
+              const isSelected = filters.categories.includes(category.value);
+
+              return (
+                <button
+                  key={category.value}
+                  // クリックでカテゴリ詳細モーダルを開く
+                  onClick={() => setDetailCategory(category.value)}
+                  className={`relative py-3 px-4 min-h-[48px] rounded-lg border transition-all duration-200 touch-manipulation text-sm md:text-base font-medium ${
+                    isSelected
+                      ? 'bg-purple-600 border-purple-500 text-white'
+                      : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 active:bg-gray-500'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    {category.value === '事件事故' && <span className="text-xs">⚠️</span>}
+                    {category.label}
+                  </span>
+                  {/* 詳細フィルター適用済みインジケーター */}
+                  {hasDetail && (
+                    <span className="absolute top-1 right-1 flex items-center justify-center">
+                      <CheckCircle2 size={12} className="text-green-400" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
+          {/* 詳細フィルター説明 */}
+          <p className="text-xs text-gray-500 mt-2">
+            カテゴリボタンをクリックすると期間・地域・サブカテゴリを詳細設定できます
+          </p>
         </div>
 
         {/* バッチモード設定 */}
@@ -557,6 +615,15 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* カテゴリ詳細フィルターモーダル */}
+      <CategoryDetailModal
+        category={detailCategory || ''}
+        isOpen={!!detailCategory}
+        onClose={() => setDetailCategory(null)}
+        onApply={handleCategoryDetailApply}
+        initialDetail={detailCategory ? filters.categoryDetails?.[detailCategory] : undefined}
+      />
     </div>
   );
 }
