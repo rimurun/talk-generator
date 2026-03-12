@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react';
 import { Topic, Script, FilterOptions, GenerateScriptResponse } from '@/types';
 import { durationOptions } from '@/lib/mock-data';
 import { storage } from '@/lib/storage';
-import { Zap, MessageSquare, Star, Heart, Copy, Pencil, Save, RotateCcw, Monitor } from 'lucide-react';
+import { Zap, MessageSquare, Star, Heart, Copy, Pencil, Save, RotateCcw, Monitor, Share2 } from 'lucide-react';
 import { ArrowLeftIcon, CopyIcon, RefreshIcon, ExternalLinkIcon, ClockIcon } from './icons';
 import dynamic from 'next/dynamic';
 import TeleprompterView from './TeleprompterView';
+import ExportPanel from './ExportPanel';
 
 const LoadingSpinner = dynamic(() => import('./LoadingSpinner'), {
   loading: () => <div className="animate-pulse bg-gray-700 h-8 w-8 rounded-full mx-auto"></div>
@@ -77,8 +78,15 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
   const [showRatingForm, setShowRatingForm] = useState(false);
   const [ngWords, setNgWords] = useState<string[]>([]);
 
+  // クイック星評価（スタイル学習用）
+  const [quickRating, setQuickRating] = useState<number>(0);
+  const [quickRatingHover, setQuickRatingHover] = useState<number>(0);
+
   // テレプロンプター表示フラグ
   const [showTeleprompter, setShowTeleprompter] = useState(false);
+
+  // エクスポートパネル表示フラグ
+  const [showExportPanel, setShowExportPanel] = useState(false);
 
   // 編集モード関連の状態
   const [isEditMode, setIsEditMode] = useState(false);
@@ -130,6 +138,18 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
       setCurrentRating(rating.rating);
       setRatingComment(rating.comment || '');
     }
+    // クイック評価も復元
+    const quickRatings = storage.getScriptRatings();
+    if (quickRatings[script.id]) {
+      setQuickRating(quickRatings[script.id].rating);
+    }
+  };
+
+  // クイック星評価を保存
+  const handleQuickRating = (star: number) => {
+    if (!script) return;
+    storage.rateScript(script.id, star as 1 | 2 | 3 | 4 | 5);
+    setQuickRating(star);
   };
 
   // ローカルストレージから編集済みコンテンツを読み込む
@@ -168,6 +188,9 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
     setError(null);
 
     try {
+      // スタイルプロファイルを取得してリクエストに含める
+      const styleProfile = storage.getStyleProfile();
+
       const response = await fetch('/api/script', {
         method: 'POST',
         headers: {
@@ -185,6 +208,7 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
           duration: currentDuration,
           tension: filters.tension,
           tone: filters.tone,
+          styleProfile: styleProfile || undefined,
         }),
       });
 
@@ -200,6 +224,9 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
       if (!data.cached) {
         storage.updateRateLimit('script', data.cost || 0);
       }
+
+      // 使用統計を記録（スタイル学習用）
+      storage.trackGeneration(topic.category, data.cached || false);
 
       // 履歴に追加
       storage.addHistory({
@@ -241,6 +268,9 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
     setEditedContent(null);
 
     try {
+      // スタイルプロファイルを取得してリクエストに含める
+      const styleProfile = storage.getStyleProfile();
+
       const response = await fetch('/api/script', {
         method: 'POST',
         headers: {
@@ -258,6 +288,7 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
           duration: newDuration,
           tension: filters.tension,
           tone: filters.tone,
+          styleProfile: styleProfile || undefined,
         }),
       });
 
@@ -273,6 +304,9 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
       if (!data.cached) {
         storage.updateRateLimit('script', data.cost || 0);
       }
+
+      // 使用統計を記録（スタイル学習用）
+      storage.trackGeneration(topic.category, data.cached || false);
 
       // 履歴に追加
       storage.addHistory({
@@ -421,9 +455,41 @@ ${content.transition}
     setIsEditMode(prev => !prev);
   };
 
-  // 編集内容をローカルストレージに保存
+  // 編集内容をローカルストレージに保存し、スタイル編集をトラッキング
   const handleSaveEdit = () => {
-    if (!editedContent || typeof window === 'undefined') return;
+    if (!editedContent || typeof window === 'undefined' || !script) return;
+
+    // 元のAI生成コンテンツと比較してスタイル編集を記録
+    const originalContent = {
+      opening: script.content.opening || '',
+      explanation: script.content.explanation || '',
+      streamerComment: script.content.streamerComment || '',
+      transition: script.content.transition || '',
+      factualReport: script.content.factualReport || '',
+      seriousContext: script.content.seriousContext || '',
+      avoidanceNotes: script.content.avoidanceNotes || '',
+    };
+
+    // セクションごとに差分を検出してトラッキング
+    const sectionsToTrack: Array<{ key: keyof typeof originalContent; label: string }> = [
+      { key: 'opening', label: 'opening' },
+      { key: 'explanation', label: 'explanation' },
+      { key: 'streamerComment', label: 'comment' },
+      { key: 'transition', label: 'transition' },
+      { key: 'factualReport', label: 'factualReport' },
+      { key: 'seriousContext', label: 'seriousContext' },
+      { key: 'avoidanceNotes', label: 'avoidanceNotes' },
+    ];
+
+    sectionsToTrack.forEach(({ key, label }) => {
+      const orig = originalContent[key];
+      const edited = editedContent[key as keyof typeof editedContent] as string;
+      // 元と異なる場合のみ記録
+      if (orig && edited && orig !== edited) {
+        storage.trackStyleEdit(orig, edited, label);
+      }
+    });
+
     localStorage.setItem(editStorageKey, JSON.stringify(editedContent));
     setIsEditMode(false);
     // 保存完了フィードバック
@@ -676,6 +742,16 @@ ${content.transition}
                 >
                   <CopyIcon size={14} />
                   <span>{copySuccess === 'full' ? 'コピーしました' : 'コピー'}</span>
+                </button>
+
+                {/* エクスポートボタン */}
+                <button
+                  onClick={() => setShowExportPanel(true)}
+                  aria-label="エクスポートパネルを開く"
+                  className="flex items-center gap-2 border border-gray-600 text-gray-300 hover:bg-gray-700 px-3 py-2 rounded-lg text-sm transition-colors"
+                >
+                  <Share2 size={14} />
+                  エクスポート
                 </button>
               </div>
             </div>
@@ -937,8 +1013,51 @@ ${content.transition}
                 />
               </div>
             )}
+
+            {/* クイック星評価ウィジェット（スタイル学習用） */}
+            <div className="mt-6 pt-6 border-t border-gray-700">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-400">この台本を評価:</span>
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      onClick={() => handleQuickRating(star)}
+                      onMouseEnter={() => setQuickRatingHover(star)}
+                      onMouseLeave={() => setQuickRatingHover(0)}
+                      aria-label={`${star}星評価`}
+                      className="transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 rounded"
+                    >
+                      <Star
+                        size={22}
+                        className={
+                          star <= (quickRatingHover || quickRating)
+                            ? 'text-yellow-400 fill-current'
+                            : 'text-gray-600'
+                        }
+                      />
+                    </button>
+                  ))}
+                </div>
+                {quickRating > 0 && (
+                  <span className="text-xs text-gray-500">
+                    {quickRating}/5 — スタイル学習に反映されます
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
+      )}
+
+      {/* エクスポートパネル（台本が存在する場合のみレンダリング） */}
+      {script && (
+        <ExportPanel
+          isOpen={showExportPanel}
+          onClose={() => setShowExportPanel(false)}
+          script={script}
+          topic={topic}
+        />
       )}
     </div>
   );

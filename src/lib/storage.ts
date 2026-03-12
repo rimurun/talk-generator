@@ -605,6 +605,126 @@ class StorageService {
   }
 
   // ===========================================================
+  // スタイル学習機能
+  // ===========================================================
+
+  // ユーザーのスタイル編集履歴を記録
+  trackStyleEdit(original: string, edited: string, section: string): void {
+    const edits = this.getStyleEdits();
+    edits.push({
+      section, // 'opening', 'explanation' など
+      original: original.substring(0, 200), // 保存容量節約
+      edited: edited.substring(0, 200),
+      timestamp: new Date().toISOString()
+    });
+    // 最新50件のみ保持
+    const trimmed = edits.slice(-50);
+    localStorage.setItem(this.scopedKey('style_edits'), JSON.stringify(trimmed));
+  }
+
+  getStyleEdits(): Array<{ section: string; original: string; edited: string; timestamp: string }> {
+    if (!this.isClient) return [];
+    try {
+      return JSON.parse(localStorage.getItem(this.scopedKey('style_edits')) || '[]');
+    } catch { return []; }
+  }
+
+  // スタイルプロファイル（AIプロンプトに渡す要約）
+  getStyleProfile(): string {
+    if (!this.isClient) return '';
+    const edits = this.getStyleEdits();
+    if (edits.length < 3) return ''; // 3件以上の編集がないと学習しない
+
+    // 編集パターンを分析
+    const patterns: string[] = [];
+
+    // セクション別の編集傾向
+    const sectionCounts: Record<string, number> = {};
+    edits.forEach(e => {
+      sectionCounts[e.section] = (sectionCounts[e.section] || 0) + 1;
+    });
+
+    // 最もよく編集するセクション
+    const topSection = Object.entries(sectionCounts).sort((a, b) => b[1] - a[1])[0];
+    if (topSection) patterns.push(`${topSection[0]}をよく修正する`);
+
+    // 文の長さ傾向（短くする傾向 or 長くする傾向）
+    let shorterCount = 0, longerCount = 0;
+    edits.forEach(e => {
+      if (e.edited.length < e.original.length * 0.8) shorterCount++;
+      if (e.edited.length > e.original.length * 1.2) longerCount++;
+    });
+    if (shorterCount > longerCount + 2) patterns.push('簡潔な表現を好む');
+    if (longerCount > shorterCount + 2) patterns.push('詳細な説明を好む');
+
+    // 最近の編集サンプル（直近3件）
+    const recentEdits = edits.slice(-3).map(e =>
+      `${e.section}: "${e.original.substring(0, 50)}" → "${e.edited.substring(0, 50)}"`
+    );
+
+    if (patterns.length > 0 || recentEdits.length > 0) {
+      return `【ユーザースタイル】${patterns.join('、')}${recentEdits.length > 0 ? '\n直近の修正例:\n' + recentEdits.join('\n') : ''}`;
+    }
+    return '';
+  }
+
+  // スクリプト評価を簡易記録（スタイル学習用・既存の addRating とは別）
+  rateScript(scriptId: string, rating: 1 | 2 | 3 | 4 | 5): void {
+    if (!this.isClient) return;
+    const ratings = this.getScriptRatings();
+    ratings[scriptId] = { rating, timestamp: new Date().toISOString() };
+    // 最新100件
+    const keys = Object.keys(ratings);
+    if (keys.length > 100) {
+      keys.slice(0, keys.length - 100).forEach(k => delete ratings[k]);
+    }
+    localStorage.setItem(this.scopedKey('script_ratings'), JSON.stringify(ratings));
+  }
+
+  getScriptRatings(): Record<string, { rating: number; timestamp: string }> {
+    if (!this.isClient) return {};
+    try {
+      return JSON.parse(localStorage.getItem(this.scopedKey('script_ratings')) || '{}');
+    } catch { return {}; }
+  }
+
+  getAverageRating(): number {
+    const ratings = this.getScriptRatings();
+    const values = Object.values(ratings).map(r => r.rating);
+    if (values.length === 0) return 0;
+    return values.reduce((a, b) => a + b, 0) / values.length;
+  }
+
+  // 使用統計を記録
+  trackGeneration(category: string, cached: boolean): void {
+    if (!this.isClient) return;
+    const stats = this.getUsageStats();
+    const today = new Date().toISOString().split('T')[0];
+    if (!stats.daily[today]) stats.daily[today] = { count: 0, categories: {}, cached: 0 };
+    stats.daily[today].count++;
+    stats.daily[today].categories[category] = (stats.daily[today].categories[category] || 0) + 1;
+    if (cached) stats.daily[today].cached++;
+    stats.totalGenerations++;
+    // 30日分のみ保持
+    const dates = Object.keys(stats.daily).sort();
+    if (dates.length > 30) {
+      dates.slice(0, dates.length - 30).forEach(d => delete stats.daily[d]);
+    }
+    localStorage.setItem(this.scopedKey('usage_stats'), JSON.stringify(stats));
+  }
+
+  getUsageStats(): {
+    totalGenerations: number;
+    daily: Record<string, { count: number; categories: Record<string, number>; cached: number }>;
+  } {
+    if (!this.isClient) return { totalGenerations: 0, daily: {} };
+    try {
+      const data = JSON.parse(localStorage.getItem(this.scopedKey('usage_stats')) || '{}');
+      return { totalGenerations: data.totalGenerations || 0, daily: data.daily || {} };
+    } catch { return { totalGenerations: 0, daily: {} }; }
+  }
+
+  // ===========================================================
   // 全データクリア
   // ===========================================================
 
@@ -620,6 +740,9 @@ class StorageService {
       this.scopedKey('daily-usage'),
       this.scopedKey('last-topics'),
       this.scopedKey('last-filters'),
+      this.scopedKey('style_edits'),
+      this.scopedKey('script_ratings'),
+      this.scopedKey('usage_stats'),
     ];
     keys.forEach(key => localStorage.removeItem(key));
   }

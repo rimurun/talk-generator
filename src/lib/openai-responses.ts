@@ -658,7 +658,8 @@ export async function generateScriptWithCache(
   },
   duration: 15 | 60 | 180,
   tension: 'low' | 'medium' | 'high',
-  tone: string
+  tone: string,
+  styleProfile?: string // ユーザースタイルプロファイル（省略可）
 ): Promise<{
   script: Script;
   cost: number;
@@ -704,12 +705,17 @@ export async function generateScriptWithCache(
     const targetChars = duration === 15 ? 100 : duration === 60 ? 400 : 1200;
     
     // 圧縮済みシステムプロンプト（冗長なトーン例・重複指示を削除）
-    const systemPrompt = `配信者向け台本作成。
+    let systemPrompt = `配信者向け台本作成。
 尺: ${duration}秒(約${targetChars}文字) / テンション: ${tension} / 口調: ${tone}
 ${topic.category === '事件事故'
   ? '事件事故モード: 事実のみ・煽り禁止・断定禁止・シリアストーン。JSON返答のみ。'
   : `通常モード: opening(導入)・explanation(説明${Math.floor(targetChars * 0.4)}字)・streamerComment(感想${Math.floor(targetChars * 0.3)}字)・viewerQuestions(3問)・expansions(展開3件)・transition(繋ぎ)。JSON返答のみ。`
 }`;
+
+    // ユーザースタイルプロファイルがある場合はプロンプトに追記
+    if (styleProfile) {
+      systemPrompt += `\n\n${styleProfile}`;
+    }
 
     const userPrompt = `以下のトピック情報に基づいて台本を作成してください:
 

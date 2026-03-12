@@ -6,8 +6,9 @@ export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
-    const body: GenerateScriptRequest = await request.json();
-    
+    // styleProfile は GenerateScriptRequest に定義されていないため any で受け取る
+    const body: GenerateScriptRequest & { styleProfile?: string } = await request.json();
+
     // バリデーション
     if (!body.topic && !body.topicId) {
       return NextResponse.json(
@@ -37,12 +38,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 台本生成（キャッシュ・コスト対応）
+    // 台本生成（キャッシュ・コスト対応）。スタイルプロファイルも渡す
     const result = await generateScriptWithCache(
       body.topic || { id: body.topicId!, title: '', category: 'ニュース', summary: '', sensitivityLevel: 1, riskLevel: 'low' },
       body.duration,
       body.tension,
-      body.tone
+      body.tone,
+      body.styleProfile || undefined
     );
 
     return NextResponse.json({

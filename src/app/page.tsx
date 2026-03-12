@@ -13,6 +13,7 @@ import { TopicListSkeleton } from '@/components/TopicCardSkeleton';
 import CategoryDetailModal from '@/components/CategoryDetailModal';
 import { Zap, Star, DollarSign, Clock, AlertTriangle, Settings, Sparkles, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
+import OnboardingOverlay from '@/components/OnboardingOverlay';
 
 // ゲスト利用回数管理のlocalStorageキー
 const GUEST_USAGE_KEY = 'talkgen_guest_usage_count';
@@ -674,6 +675,9 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* 初回ユーザー向けオンボーディング */}
+      <OnboardingOverlay />
 
       {/* カテゴリ詳細フィルターモーダル */}
       <CategoryDetailModal

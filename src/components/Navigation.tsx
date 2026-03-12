@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Star, Clock, Settings, Menu, X, Zap, LogIn, LogOut, User } from 'lucide-react';
+import { Home, Star, Clock, Settings, Menu, X, Zap, LogIn, LogOut, User, TrendingUp, BarChart3 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from './AuthProvider';
 
@@ -19,6 +19,12 @@ export default function Navigation() {
       description: 'トピック生成'
     },
     {
+      name: 'トレンド',
+      href: '/trending',
+      icon: TrendingUp,
+      description: '今日の話題'
+    },
+    {
       name: 'お気に入り',
       href: '/favorites',
       icon: Star,
@@ -29,6 +35,12 @@ export default function Navigation() {
       href: '/history',
       icon: Clock,
       description: '生成履歴'
+    },
+    {
+      name: '分析',
+      href: '/analytics',
+      icon: BarChart3,
+      description: '利用分析'
     },
     {
       name: '設定',
@@ -150,6 +162,12 @@ export default function Navigation() {
           {/* フッター情報 */}
           <div className="absolute bottom-12 left-6 right-6">
             <div className="text-xs text-gray-500 space-y-1">
+              {/* Proプランリンク */}
+              <div className="mb-2">
+                <Link href="/pricing" className="text-xs text-blue-400 hover:text-blue-300">
+                  Pro プランを見る →
+                </Link>
+              </div>
               <div>Version 2.0.0</div>
               <div>© 2026 TalkGenerator</div>
             </div>
