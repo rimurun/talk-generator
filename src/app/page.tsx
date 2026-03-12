@@ -45,7 +45,7 @@ export default function Home() {
   const [batchMode, setBatchMode] = useState(false);
   const [batchCount, setBatchCount] = useState(15);
   const [batchDiversityMode, setBatchDiversityMode] = useState(true);
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<import('@/lib/storage').UserProfile | null>(null);
   const [detailMode, setDetailMode] = useState(false); // 台本詳細表示中はフィルター非表示
 
   // プロファイル読み込み
@@ -473,30 +473,34 @@ export default function Home() {
             
             <button
               onClick={() => {
-                // キャッシュから前回の結果を表示（モック実装）
-                const cachedTopics = storage.getHistory()
-                  .filter(h => h.type === 'topic')
-                  .slice(0, 1)[0];
-                
-                if (cachedTopics) {
-                  // 実際の実装では、キャッシュされたtopicsを復元
-                  alert('キャッシュ機能は開発中です。前回の結果を表示する機能を今後実装予定です。');
+                const history = storage.getHistory()
+                  .filter(h => h.type === 'topic');
+
+                if (history.length > 0 && lastFilters) {
+                  // 前回のフィルターで再生成（キャッシュがあればヒットする）
+                  generateTopics(lastFilters);
+                  clearError();
                 } else {
-                  alert('前回の結果がありません');
+                  // フィルター未設定なら全カテゴリで生成
+                  generateTopics(filters);
+                  clearError();
                 }
               }}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400/50"
+              disabled={loading}
+              className="bg-gray-600 hover:bg-gray-700 disabled:opacity-50 text-white px-3 py-1 rounded text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400/50"
             >
-              💾 前回の結果を表示
+              💾 前回の条件で再生成
             </button>
-            
+
             <button
               onClick={() => {
-                alert('練習モードは開発中です。モックデータでの練習機能を今後実装予定です。');
+                clearError();
+                generateTopics(filters);
               }}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400/50"
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-3 py-1 rounded text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400/50"
             >
-              🎯 練習モードを使用
+              🎯 条件を変えて再生成
             </button>
           </div>
         </div>

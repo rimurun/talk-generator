@@ -81,13 +81,15 @@ export function useTopics(): UseTopicsReturn {
       setLastFilters(filters);
       setLastRequestTime(Date.now());
 
-      // 進捗表示
+      // 進捗表示（実際のAPI待機に合わせた段階表示）
       setProgressStep('🔍 ニュース検索中...');
-      
-      setProgressStep('📝 トピック整理中...');
 
       // 前回のタイトルを取得（重複防止）
       const previousTitles = storage.getPreviousTopicTitles();
+
+      // API呼び出しと進捗を並行実行
+      const progressTimer = setTimeout(() => setProgressStep('📝 トピック整理中...'), 3000);
+      const progressTimer2 = setTimeout(() => setProgressStep('🤖 AI分析中...'), 8000);
 
       const response = await fetch('/api/topics', {
         method: 'POST',
@@ -97,6 +99,8 @@ export function useTopics(): UseTopicsReturn {
         body: JSON.stringify({ filters, previousTitles }),
       });
 
+      clearTimeout(progressTimer);
+      clearTimeout(progressTimer2);
       setProgressStep('🤖 AI分析中...');
 
       if (!response.ok) {
@@ -169,10 +173,11 @@ export function useTopics(): UseTopicsReturn {
       setLastFilters(fullFilters);
       setLastRequestTime(Date.now());
 
-      // 進捗表示
+      // 進捗表示（実際のAPI待機に合わせた段階表示）
       setProgressStep('🔍 ニュース一括検索中...');
-      
-      setProgressStep(`📝 ${count}件のトピック分析中...`);
+
+      const progressTimer = setTimeout(() => setProgressStep(`📝 ${count}件のトピック分析中...`), 3000);
+      const progressTimer2 = setTimeout(() => setProgressStep('🤖 AI一括処理中...'), 8000);
 
       const response = await fetch('/api/batch', {
         method: 'POST',
@@ -187,6 +192,8 @@ export function useTopics(): UseTopicsReturn {
         }),
       });
 
+      clearTimeout(progressTimer);
+      clearTimeout(progressTimer2);
       setProgressStep('🤖 AI一括処理中...');
 
       if (!response.ok) {

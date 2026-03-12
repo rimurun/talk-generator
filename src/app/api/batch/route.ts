@@ -3,6 +3,7 @@ import { generateTopicsWithWebSearch } from '@/lib/openai-responses';
 import { BatchGenerationRequest, BatchGenerationResponse } from '@/types';
 import { memoryCache, createBatchCacheKey } from '@/lib/cache';
 
+
 export async function POST(request: NextRequest) {
   try {
     const body: BatchGenerationRequest = await request.json();
@@ -21,10 +22,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // バッチキャッシュチェック
+    // バッチキャッシュチェック（インメモリ → DB フォールバック）
     const batchCacheKey = createBatchCacheKey(body.categories, body.count, body.diversityMode || false);
-    const cachedBatch = memoryCache.getBatch(batchCacheKey);
-    
+    let cachedBatch = memoryCache.getBatch(batchCacheKey);
+
+    // インメモリにない場合は DB キャッシュを確認
+    if (!cachedBatch) {
+      cachedBatch = await memoryCache.getBatchFromDb(batchCacheKey);
+    }
+
     if (cachedBatch) {
       console.log('🎯 バッチキャッシュヒット');
       return NextResponse.json({

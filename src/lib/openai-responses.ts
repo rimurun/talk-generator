@@ -9,9 +9,9 @@ const MODEL = 'gpt-4o-mini';
 // デバッグログ用
 const DEBUG = process.env.NODE_ENV !== 'production';
 
-// コスト計算用（GPT-4o料金）
-const COST_PER_1M_INPUT_TOKENS = 2.5; // $2.50
-const COST_PER_1M_OUTPUT_TOKENS = 10.0; // $10.00
+// コスト計算用（GPT-4o-mini料金）
+const COST_PER_1M_INPUT_TOKENS = 0.15; // $0.15
+const COST_PER_1M_OUTPUT_TOKENS = 0.60; // $0.60
 
 interface OpenAIResponsesRequest {
   model: string;
@@ -48,7 +48,11 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
   
   // キャッシュチェック（前回タイトルがある場合はスキップ → 必ず新しい結果を取得）
   if (!hasPreviousTitles) {
-    const cachedTopics = memoryCache.getTopics(cacheKey);
+    // インメモリキャッシュ → DB キャッシュの順にチェック
+    let cachedTopics = memoryCache.getTopics(cacheKey);
+    if (!cachedTopics) {
+      cachedTopics = await memoryCache.getTopicsFromDb(cacheKey);
+    }
     if (cachedTopics) {
       console.log('🎯 トピックキャッシュヒット（完全一致）');
       trackUsage(0, 0, true);
@@ -166,7 +170,7 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
 
       // リクエストタイムアウト設定（30秒）
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       const response = await fetch(OPENAI_RESPONSES_ENDPOINT, {
         method: 'POST',
@@ -298,11 +302,10 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
         filters.categories.includes(topic.category)
       );
     } else if (filters.categories.length === 1) {
-      // 単一カテゴリ: 検索クエリで既に絞ってるのでカテゴリを強制上書き
-      filteredTopics = filteredTopics.map(topic => ({
-        ...topic,
-        category: filters.categories[0] as any
-      }));
+      // 単一カテゴリ選択時: そのカテゴリのトピックのみ残す
+      filteredTopics = filteredTopics.filter(topic =>
+        topic.category === filters.categories[0]
+      );
     }
 
     if (!filters.includeIncidents) {
@@ -366,9 +369,6 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
       cost,
       cached: false
     };
-
-      // 成功した場合はループを抜ける
-      break;
 
     } catch (error: any) {
       lastError = error as Error;
@@ -442,8 +442,11 @@ export async function generateScriptWithCache(
 }> {
   const cacheKey = createScriptCacheKey(topic.id, duration, tension, tone);
   
-  // 完全一致キャッシュチェック
-  const cachedScript = memoryCache.getScript(cacheKey);
+  // 完全一致キャッシュチェック（インメモリ → DB フォールバック）
+  let cachedScript = memoryCache.getScript(cacheKey);
+  if (!cachedScript) {
+    cachedScript = await memoryCache.getScriptFromDb(cacheKey);
+  }
   if (cachedScript) {
     console.log('🎯 台本キャッシュヒット（完全一致）');
     return {
@@ -454,7 +457,7 @@ export async function generateScriptWithCache(
     };
   }
 
-  // ファジーマッチキャッシュチェック（新機能）
+  // ファジーマッチキャッシュチェック
   const fuzzyMatch = memoryCache.getScriptFuzzy(topic.id, duration, tension, tone);
   if (fuzzyMatch) {
     console.log(`🔄 台本キャッシュヒット（ファジーマッチ: ${fuzzyMatch.baseKey}）`);
@@ -832,25 +835,9 @@ function getRandomCategory(): 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok'
  * メッセージからトピック抽出（フォールバック）
  */
 function extractTopicsFromMessage(message: string, filters: FilterOptions): Topic[] {
-  // 簡易的なフォールバック実装
-  const topics: Topic[] = [];
-  
-  for (let i = 0; i < 10; i++) {
-    const category = getRandomCategory();
-    
-    topics.push({
-      id: `topic-${Date.now()}-${i}`,
-      title: `最新${category}トピック #${i + 1}`,
-      category,
-      summary: `${category}に関する最新の話題です。配信での話題作りに最適です。`,
-      sensitivityLevel: Math.floor(Math.random() * 3) + 1 as 1 | 2 | 3,
-      riskLevel: ['low', 'medium', 'high'][Math.floor(Math.random() * 3)] as 'low' | 'medium' | 'high',
-      sourceUrl: 'https://news.example.com',
-      createdAt: new Date().toISOString()
-    });
-  }
-  
-  return topics;
+  // パース失敗時は空配列を返し、呼び出し元でフォールバックトピックを使用
+  console.warn('[WARN] トピック抽出失敗、フォールバックモードに移行');
+  return generateFallbackTopics(filters);
 }
 
 /**
@@ -954,29 +941,28 @@ function removeDuplicateTopics(topics: Topic[]): Topic[] {
 }
 
 /**
- * 文字列類似度計算（Jaccard係数）
+ * 文字列類似度計算（バイグラムベースJaccard係数、日本語対応）
  */
 function calculateSimilarity(str1: string, str2: string): number {
-  const tokens1 = new Set(str1.split(''));
-  const tokens2 = new Set(str2.split(''));
-  
-  // ES5互換の実装
-  const intersectionArray: string[] = [];
-  tokens1.forEach(token => {
-    if (tokens2.has(token)) {
-      intersectionArray.push(token);
+  // バイグラム（2文字連続）ベースのJaccard係数（日本語対応）
+  const getBigrams = (str: string): Set<string> => {
+    const bigrams = new Set<string>();
+    for (let i = 0; i < str.length - 1; i++) {
+      bigrams.add(str.slice(i, i + 2));
     }
+    return bigrams;
+  };
+
+  const bigrams1 = getBigrams(str1);
+  const bigrams2 = getBigrams(str2);
+
+  let intersectionCount = 0;
+  bigrams1.forEach(bg => {
+    if (bigrams2.has(bg)) intersectionCount++;
   });
-  
-  const unionArray: string[] = [];
-  tokens1.forEach(token => unionArray.push(token));
-  tokens2.forEach(token => {
-    if (!tokens1.has(token)) {
-      unionArray.push(token);
-    }
-  });
-  
-  return intersectionArray.length / unionArray.length;
+
+  const unionCount = bigrams1.size + bigrams2.size - intersectionCount;
+  return unionCount === 0 ? 0 : intersectionCount / unionCount;
 }
 
 /**
@@ -1033,7 +1019,7 @@ function calculateKeywordOverlap(keywords1: string[], keywords2: string[]): numb
  * カテゴリバランス調整
  */
 function balanceTopicCategories(topics: Topic[]): Topic[] {
-  const categories = ['ニュース', 'エンタメ', 'SNS', 'TikTok', '事件事故'];
+  const categories = ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ', '事件事故'];
   const balanced: Topic[] = [];
   
   // 各カテゴリから最大3件ずつ取得

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { isOpenAIConfigured } from '@/lib/openai';
 
 export async function GET() {
   try {
-    const openaiEnabled = isOpenAIConfigured();
+    // OPENAI_API_KEYが設定されているかをインラインで確認
+    const openaiEnabled = !!process.env.OPENAI_API_KEY;
     
     return NextResponse.json({
       openaiEnabled,

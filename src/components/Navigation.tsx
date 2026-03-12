@@ -2,12 +2,16 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Star, Clock, Settings, Menu, X, Zap } from 'lucide-react';
+import { Home, Star, Clock, Settings, Menu, X, Zap, LogIn, LogOut, User } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from './AuthProvider';
+import AuthModal from './AuthModal';
 
 export default function Navigation() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const { user, isConfigured, signOut } = useAuth();
+  const [showAuth, setShowAuth] = useState(false);
 
   const navigation = [
     {
@@ -113,6 +117,37 @@ export default function Navigation() {
             })}
           </ul>
 
+          {/* ユーザー情報（Supabase設定済みの場合のみ表示） */}
+          {isConfigured && (
+            <div className="absolute bottom-24 left-6 right-6">
+              {user ? (
+                // ログイン済み：メールアドレスとログアウトボタンを表示
+                <div className="bg-gray-800 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-gray-300">
+                    <User size={16} />
+                    <span className="truncate">{user.email}</span>
+                  </div>
+                  <button
+                    onClick={() => signOut()}
+                    className="flex items-center gap-2 text-xs text-gray-400 hover:text-red-400 transition-colors"
+                  >
+                    <LogOut size={14} />
+                    ログアウト
+                  </button>
+                </div>
+              ) : (
+                // 未ログイン：ログイン/登録ボタンを表示
+                <button
+                  onClick={() => setShowAuth(true)}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                >
+                  <LogIn size={18} />
+                  ログイン / 登録
+                </button>
+              )}
+            </div>
+          )}
+
           {/* フッター情報 */}
           <div className="absolute bottom-12 left-6 right-6">
             <div className="text-xs text-gray-500 space-y-1">
@@ -139,7 +174,7 @@ export default function Navigation() {
                 return null;
               })}
             </div>
-            
+
             <div className="flex items-center gap-4">
               <div className="text-xs text-gray-500">
                 OpenAI GPT-4o + キャッシュ最適化
@@ -148,6 +183,9 @@ export default function Navigation() {
           </div>
         </div>
       </div>
+
+      {/* 認証モーダル */}
+      <AuthModal isOpen={showAuth} onClose={() => setShowAuth(false)} />
     </>
   );
 }

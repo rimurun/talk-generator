@@ -1,4 +1,6 @@
-// インメモリキャッシュシステム - コスト削減最適化版
+// キャッシュシステム - Supabase永続キャッシュ + インメモリフォールバック
+import { getDbCacheService, isSupabaseConfigured } from './db';
+
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
@@ -18,50 +20,86 @@ interface CacheStats {
 
 class MemoryCache {
   private cache = new Map<string, CacheEntry<any>>();
-  private readonly TOPIC_CACHE_TTL = 30 * 60 * 1000; // 30分（15分→30分に延長）
-  private readonly SCRIPT_CACHE_TTL = 3 * 60 * 60 * 1000; // 3時間（1時間→3時間に延長）
-  private readonly BATCH_CACHE_TTL = 45 * 60 * 1000; // 45分（バッチ結果用）
-  
+  private readonly TOPIC_CACHE_TTL = 30 * 60 * 1000; // 30分
+  private readonly SCRIPT_CACHE_TTL = 3 * 60 * 60 * 1000; // 3時間
+  private readonly BATCH_CACHE_TTL = 45 * 60 * 1000; // 45分
+
   // 統計情報
   private hits = 0;
   private misses = 0;
-  
-  // トピック一覧をキャッシュ（改良版）
+
+  /**
+   * Supabase DB キャッシュが利用可能かどうか
+   */
+  private get useDb(): boolean {
+    return isSupabaseConfigured();
+  }
+
+  // ===========================================================
+  // トピック一覧キャッシュ
+  // ===========================================================
+
   setTopics(key: string, topics: any): void {
+    // インメモリに常に保存
     this.cache.set(`topics:${key}`, {
       data: topics,
       timestamp: Date.now(),
       accessCount: 0,
       lastAccessed: Date.now()
     });
-  }
-  
-  // トピック一覧を取得（改良版）
-  getTopics(key: string): any | null {
-    const entry = this.cache.get(`topics:${key}`);
-    if (!entry) {
-      this.misses++;
-      return null;
+
+    // Supabase にも非同期保存
+    if (this.useDb) {
+      getDbCacheService().setTopics(key, topics).catch(err =>
+        console.error('DB cache setTopics error:', err)
+      );
     }
-    
-    if (Date.now() - entry.timestamp > this.TOPIC_CACHE_TTL) {
-      this.cache.delete(`topics:${key}`);
-      this.misses++;
-      return null;
-    }
-    
-    // アクセス統計更新
-    entry.accessCount++;
-    entry.lastAccessed = Date.now();
-    this.hits++;
-    
-    return entry.data;
   }
 
-  // ファジーマッチによるトピック取得（新機能）
+  getTopics(key: string): any | null {
+    // インメモリ優先
+    const entry = this.cache.get(`topics:${key}`);
+    if (entry && Date.now() - entry.timestamp <= this.TOPIC_CACHE_TTL) {
+      entry.accessCount++;
+      entry.lastAccessed = Date.now();
+      this.hits++;
+      return entry.data;
+    }
+
+    if (entry) {
+      this.cache.delete(`topics:${key}`);
+    }
+
+    this.misses++;
+    return null;
+  }
+
+  /**
+   * Supabase DB からトピックキャッシュを取得（非同期版）
+   * インメモリにヒットしなかった場合にフォールバック
+   */
+  async getTopicsFromDb(key: string): Promise<any | null> {
+    if (!this.useDb) return null;
+
+    const data = await getDbCacheService().getTopics(key);
+    if (data) {
+      // インメモリにも復元
+      this.cache.set(`topics:${key}`, {
+        data,
+        timestamp: Date.now(),
+        accessCount: 1,
+        lastAccessed: Date.now()
+      });
+      this.hits++;
+      return data;
+    }
+    return null;
+  }
+
+  // ファジーマッチによるトピック取得
   getTopicsFuzzy(filters: any): { data: any; similarity: number; cacheKey: string } | null {
     const targetKey = this.createNormalizedTopicsKey(filters);
-    
+
     // 完全一致を先にチェック
     const exactMatch = this.getTopics(targetKey);
     if (exactMatch) {
@@ -74,8 +112,7 @@ class MemoryCache {
 
     for (const [cacheKey, entry] of this.cache.entries()) {
       if (!cacheKey.startsWith('topics:')) continue;
-      
-      // TTL チェック
+
       if (Date.now() - entry.timestamp > this.TOPIC_CACHE_TTL) {
         this.cache.delete(cacheKey);
         continue;
@@ -84,17 +121,15 @@ class MemoryCache {
       try {
         const cachedFilters = JSON.parse(cacheKey.replace('topics:', ''));
         const similarity = this.calculateFilterSimilarity(filters, cachedFilters);
-        
-        // 70%以上の類似度があれば候補
+
         if (similarity > 0.7 && similarity > bestSimilarity) {
           bestSimilarity = similarity;
-          bestMatch = { 
-            data: this.filterTopicsForSimilar(entry.data, filters, cachedFilters), 
-            similarity, 
-            cacheKey 
+          bestMatch = {
+            data: this.filterTopicsForSimilar(entry.data, filters, cachedFilters),
+            similarity,
+            cacheKey
           };
-          
-          // アクセス統計更新
+
           entry.accessCount++;
           entry.lastAccessed = Date.now();
         }
@@ -111,8 +146,11 @@ class MemoryCache {
     this.misses++;
     return null;
   }
-  
-  // 台本をキャッシュ（改良版）
+
+  // ===========================================================
+  // 台本キャッシュ
+  // ===========================================================
+
   setScript(key: string, script: any): void {
     this.cache.set(`script:${key}`, {
       data: script,
@@ -120,55 +158,69 @@ class MemoryCache {
       accessCount: 0,
       lastAccessed: Date.now()
     });
-  }
-  
-  // 台本を取得（改良版）
-  getScript(key: string): any | null {
-    const entry = this.cache.get(`script:${key}`);
-    if (!entry) {
-      this.misses++;
-      return null;
+
+    if (this.useDb) {
+      getDbCacheService().setScript(key, script).catch(err =>
+        console.error('DB cache setScript error:', err)
+      );
     }
-    
-    if (Date.now() - entry.timestamp > this.SCRIPT_CACHE_TTL) {
-      this.cache.delete(`script:${key}`);
-      this.misses++;
-      return null;
-    }
-    
-    // アクセス統計更新
-    entry.accessCount++;
-    entry.lastAccessed = Date.now();
-    this.hits++;
-    
-    return entry.data;
   }
 
-  // 台本のファジーマッチ取得（新機能）
+  getScript(key: string): any | null {
+    const entry = this.cache.get(`script:${key}`);
+    if (entry && Date.now() - entry.timestamp <= this.SCRIPT_CACHE_TTL) {
+      entry.accessCount++;
+      entry.lastAccessed = Date.now();
+      this.hits++;
+      return entry.data;
+    }
+
+    if (entry) {
+      this.cache.delete(`script:${key}`);
+    }
+
+    this.misses++;
+    return null;
+  }
+
+  async getScriptFromDb(key: string): Promise<any | null> {
+    if (!this.useDb) return null;
+
+    const data = await getDbCacheService().getScript(key);
+    if (data) {
+      this.cache.set(`script:${key}`, {
+        data,
+        timestamp: Date.now(),
+        accessCount: 1,
+        lastAccessed: Date.now()
+      });
+      this.hits++;
+      return data;
+    }
+    return null;
+  }
+
+  // 台本のファジーマッチ取得
   getScriptFuzzy(topicId: string, duration: number, tension: string, tone: string): { data: any; baseKey: string } | null {
-    // 基本キー（topicId + duration）でマッチを探す
     const basePattern = `${topicId}-${duration}-`;
-    
+
     for (const [cacheKey, entry] of this.cache.entries()) {
       if (!cacheKey.startsWith('script:')) continue;
-      
+
       const scriptKey = cacheKey.replace('script:', '');
       if (!scriptKey.startsWith(basePattern)) continue;
-      
-      // TTL チェック
+
       if (Date.now() - entry.timestamp > this.SCRIPT_CACHE_TTL) {
         this.cache.delete(cacheKey);
         continue;
       }
 
-      // 基本データは同じなので再利用可能
       const adaptedScript = this.adaptScriptForTensionTone(entry.data, tension, tone);
-      
-      // アクセス統計更新
+
       entry.accessCount++;
       entry.lastAccessed = Date.now();
       this.hits++;
-      
+
       return { data: adaptedScript, baseKey: cacheKey };
     }
 
@@ -176,7 +228,10 @@ class MemoryCache {
     return null;
   }
 
-  // バッチ生成結果をキャッシュ（新機能）
+  // ===========================================================
+  // バッチ生成結果キャッシュ
+  // ===========================================================
+
   setBatch(key: string, topics: any): void {
     this.cache.set(`batch:${key}`, {
       data: topics,
@@ -184,41 +239,68 @@ class MemoryCache {
       accessCount: 0,
       lastAccessed: Date.now()
     });
+
+    if (this.useDb) {
+      getDbCacheService().setBatch(key, topics).catch(err =>
+        console.error('DB cache setBatch error:', err)
+      );
+    }
   }
 
-  // バッチ生成結果を取得（新機能）
   getBatch(key: string): any | null {
     const entry = this.cache.get(`batch:${key}`);
-    if (!entry) {
-      this.misses++;
-      return null;
+    if (entry && Date.now() - entry.timestamp <= this.BATCH_CACHE_TTL) {
+      entry.accessCount++;
+      entry.lastAccessed = Date.now();
+      this.hits++;
+      return entry.data;
     }
-    
-    if (Date.now() - entry.timestamp > this.BATCH_CACHE_TTL) {
+
+    if (entry) {
       this.cache.delete(`batch:${key}`);
-      this.misses++;
-      return null;
     }
-    
-    // アクセス統計更新
-    entry.accessCount++;
-    entry.lastAccessed = Date.now();
-    this.hits++;
-    
-    return entry.data;
+
+    this.misses++;
+    return null;
   }
-  
-  // キャッシュクリア
+
+  async getBatchFromDb(key: string): Promise<any | null> {
+    if (!this.useDb) return null;
+
+    const data = await getDbCacheService().getBatch(key);
+    if (data) {
+      this.cache.set(`batch:${key}`, {
+        data,
+        timestamp: Date.now(),
+        accessCount: 1,
+        lastAccessed: Date.now()
+      });
+      this.hits++;
+      return data;
+    }
+    return null;
+  }
+
+  // ===========================================================
+  // キャッシュ管理
+  // ===========================================================
+
   clear(): void {
     this.cache.clear();
+
+    // Supabase キャッシュもクリア
+    if (this.useDb) {
+      getDbCacheService().clear().catch(err =>
+        console.error('DB cache clear error:', err)
+      );
+    }
   }
-  
-  // キャッシュ統計（改良版）
+
   getStats(): CacheStats {
     const entries = Array.from(this.cache.keys());
     const total = this.hits + this.misses;
     const hitRate = total > 0 ? (this.hits / total) * 100 : 0;
-    
+
     return {
       totalEntries: entries.length,
       topicEntries: entries.filter(key => key.startsWith('topics:')).length,
@@ -230,9 +312,35 @@ class MemoryCache {
     };
   }
 
-  // ヘルパー関数: 正規化されたトピックキーを作成
+  /**
+   * 統合統計（インメモリ + DB）を非同期で取得
+   */
+  async getStatsWithDb(): Promise<CacheStats> {
+    const memoryStats = this.getStats();
+
+    if (!this.useDb) return memoryStats;
+
+    try {
+      const dbStats = await getDbCacheService().getStats();
+      return {
+        totalEntries: memoryStats.totalEntries + dbStats.totalEntries,
+        topicEntries: memoryStats.topicEntries + dbStats.topicEntries,
+        scriptEntries: memoryStats.scriptEntries + dbStats.scriptEntries,
+        batchEntries: memoryStats.batchEntries + dbStats.batchEntries,
+        hitRate: memoryStats.hitRate, // ヒット率はインメモリベース
+        totalHits: memoryStats.totalHits + dbStats.totalHits,
+        totalMisses: memoryStats.totalMisses + dbStats.totalMisses,
+      };
+    } catch {
+      return memoryStats;
+    }
+  }
+
+  // ===========================================================
+  // ヘルパー関数
+  // ===========================================================
+
   private createNormalizedTopicsKey(filters: any): string {
-    // フィルタを正規化（順序を統一）
     const normalized = {
       categories: [...(filters.categories || [])].sort(),
       duration: filters.duration || 60,
@@ -243,43 +351,37 @@ class MemoryCache {
     return JSON.stringify(normalized);
   }
 
-  // ヘルパー関数: フィルタ類似度を計算
   private calculateFilterSimilarity(filters1: any, filters2: any): number {
     let score = 0;
     let maxScore = 0;
 
-    // カテゴリの類似度 (重要度: 40%)
     const cats1 = new Set(filters1.categories || []);
     const cats2 = new Set(filters2.categories || []);
     const catIntersection = new Set([...cats1].filter(x => cats2.has(x)));
     const catUnion = new Set([...cats1, ...cats2]);
-    
+
     if (catUnion.size > 0) {
       score += (catIntersection.size / catUnion.size) * 0.4;
     } else if (cats1.size === 0 && cats2.size === 0) {
-      score += 0.4; // 両方とも全カテゴリの場合
+      score += 0.4;
     }
     maxScore += 0.4;
 
-    // テンション (重要度: 20%)
     if (filters1.tension === filters2.tension) {
       score += 0.2;
     }
     maxScore += 0.2;
 
-    // 事件事故フラグ (重要度: 20%)
     if (filters1.includeIncidents === filters2.includeIncidents) {
       score += 0.2;
     }
     maxScore += 0.2;
 
-    // 尺 (重要度: 10%)
     if (filters1.duration === filters2.duration) {
       score += 0.1;
     }
     maxScore += 0.1;
 
-    // 口調 (重要度: 10%)
     if (filters1.tone === filters2.tone) {
       score += 0.1;
     }
@@ -288,17 +390,14 @@ class MemoryCache {
     return maxScore > 0 ? score / maxScore : 0;
   }
 
-  // ヘルパー関数: 類似フィルタ用にトピックをフィルタリング
   private filterTopicsForSimilar(cachedTopics: any[], targetFilters: any, cachedFilters: any): any[] {
     let filtered = cachedTopics;
 
-    // カテゴリフィルタが異なる場合
     if (targetFilters.categories && targetFilters.categories.length > 0) {
       const targetCats = new Set(targetFilters.categories);
       filtered = filtered.filter(topic => targetCats.has(topic.category));
     }
 
-    // 事件事故フィルタが異なる場合
     if (targetFilters.includeIncidents !== cachedFilters.includeIncidents) {
       if (!targetFilters.includeIncidents) {
         filtered = filtered.filter(topic => topic.category !== '事件事故');
@@ -308,24 +407,18 @@ class MemoryCache {
     return filtered;
   }
 
-  // ヘルパー関数: tension/toneの異なる台本を適応
   private adaptScriptForTensionTone(baseScript: any, newTension: string, newTone: string): any {
-    // 基本構造はそのまま、tension/toneだけ更新
     return {
       ...baseScript,
       tension: newTension,
       tone: newTone,
-      // contentの調整は実際のAI呼び出しなしで軽微な変更のみ
       content: {
         ...baseScript.content,
-        // 実際の実装では、tensionに応じた文体調整など
       }
     };
   }
 
-  // プリフェッチ機能（新機能）
   async prefetchTopicsForCategories(categories: string[]): Promise<void> {
-    // 一般的なフィルタ組み合わせをプリフェッチ
     const commonFilters = [
       { categories: [], includeIncidents: false, tension: 'medium', duration: 60 },
       { categories: ['ニュース'], includeIncidents: false, tension: 'medium', duration: 60 },
@@ -333,32 +426,35 @@ class MemoryCache {
       { categories: ['SNS'], includeIncidents: false, tension: 'high', duration: 60 },
     ];
 
-    // 既存のキャッシュを確認して、ない場合のみプリフェッチ対象とする
     const toPrefetch = commonFilters.filter(filters => {
       const key = this.createNormalizedTopicsKey(filters);
       return !this.getTopics(key);
     });
 
-    // 実際のプリフェッチは外部から実行される想定
-    // （ここではキューに追加するなどの処理）
     console.log(`🚀 プリフェッチ対象: ${toPrefetch.length}件`);
   }
-  
-  // 期限切れエントリのクリーンアップ
+
   cleanup(): void {
     const now = Date.now();
     const entries = Array.from(this.cache.entries());
-    
+
     for (const [key, entry] of entries) {
       const isTopicEntry = key.startsWith('topics:');
       const isScriptEntry = key.startsWith('script:');
-      const ttl = isTopicEntry ? this.TOPIC_CACHE_TTL : 
-                   isScriptEntry ? this.SCRIPT_CACHE_TTL : 
+      const ttl = isTopicEntry ? this.TOPIC_CACHE_TTL :
+                   isScriptEntry ? this.SCRIPT_CACHE_TTL :
                    this.TOPIC_CACHE_TTL;
-      
+
       if (now - entry.timestamp > ttl) {
         this.cache.delete(key);
       }
+    }
+
+    // Supabase の期限切れキャッシュも削除
+    if (this.useDb) {
+      getDbCacheService().cleanup().catch(err =>
+        console.error('DB cache cleanup error:', err)
+      );
     }
   }
 }
@@ -366,9 +462,8 @@ class MemoryCache {
 // シングルトンキャッシュインスタンス
 export const memoryCache = new MemoryCache();
 
-// キャッシュキー生成ヘルパー（改良版）
+// キャッシュキー生成ヘルパー
 export function createTopicsCacheKey(filters: any): string {
-  // フィルタを正規化してから文字列化（順序統一でキャッシュヒット率向上）
   const normalized = {
     categories: [...(filters.categories || [])].sort(),
     duration: filters.duration || 60,
@@ -384,7 +479,6 @@ export function createScriptCacheKey(topicId: string, duration: number, tension:
 }
 
 export function createBatchCacheKey(categories: string[], count: number, diversityMode: boolean): string {
-  // バッチ処理用のキー生成
   const normalized = {
     categories: [...categories].sort(),
     count,

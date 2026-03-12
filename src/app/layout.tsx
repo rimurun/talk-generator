@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import Navigation from '@/components/Navigation'
+import AuthProvider from '@/components/AuthProvider'
+import ServiceWorkerRegistrar from '@/components/ServiceWorkerRegistrar'
 
 export const metadata: Metadata = {
   title: 'トーク生成ツール - 配信用リアルタイム・トーク生成',
@@ -14,7 +16,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'ja_JP',
-    url: 'https://talk-generator.example.com',
+    url: 'https://talk-generator-beta.vercel.app',
     siteName: 'トーク生成ツール',
     title: 'トーク生成ツール - 配信用リアルタイム・トーク生成',
     description: '配信者がボタン1つで最新ニュース・エンタメ・SNSトレンド・TikTok話題を取得し、配信でそのまま読めるトーク台本に自動変換',
@@ -35,7 +37,7 @@ export const metadata: Metadata = {
     description: '配信者がボタン1つで最新トーク台本を生成！ニュース・エンタメ・SNS・TikTokトレンド対応',
     images: ['/og-image.png'],
   },
-  metadataBase: new URL('https://talk-generator.example.com'),
+  metadataBase: new URL('https://talk-generator-beta.vercel.app'),
 }
 
 export default function RootLayout({
@@ -51,16 +53,19 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="TalkGen" />
-        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+        <link rel="apple-touch-icon" href="/icons/icon-192x192.svg" />
       </head>
       <body className="min-h-screen bg-black text-white antialiased">
+        <ServiceWorkerRegistrar />
         <ErrorBoundary>
-          <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900">
-            <Navigation />
-            <main className="lg:ml-64 lg:pt-16">
-              {children}
-            </main>
-          </div>
+          <AuthProvider>
+            <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900">
+              <Navigation />
+              <main className="lg:ml-64 lg:pt-16">
+                {children}
+              </main>
+            </div>
+          </AuthProvider>
         </ErrorBoundary>
       </body>
     </html>
