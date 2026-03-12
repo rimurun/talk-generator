@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import ErrorBoundary from '@/components/ErrorBoundary'
-import Navigation from '@/components/Navigation'
 import AuthProvider from '@/components/AuthProvider'
+import AppShell from '@/components/AppShell'
 import ServiceWorkerRegistrar from '@/components/ServiceWorkerRegistrar'
 
 export const metadata: Metadata = {
@@ -59,12 +59,9 @@ export default function RootLayout({
         <ServiceWorkerRegistrar />
         <ErrorBoundary>
           <AuthProvider>
-            <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900">
-              <Navigation />
-              <main className="lg:ml-64 lg:pt-16">
-                {children}
-              </main>
-            </div>
+            <AppShell>
+              {children}
+            </AppShell>
           </AuthProvider>
         </ErrorBoundary>
       </body>

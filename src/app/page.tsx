@@ -29,7 +29,7 @@ export default function Home() {
   // 未認証ユーザーをログインページにリダイレクト
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push('/login');
+      router.replace('/login');
     }
   }, [user, authLoading, router]);
 
