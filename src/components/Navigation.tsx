@@ -5,13 +5,11 @@ import { usePathname } from 'next/navigation';
 import { Home, Star, Clock, Settings, Menu, X, Zap, LogIn, LogOut, User } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from './AuthProvider';
-import AuthModal from './AuthModal';
 
 export default function Navigation() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const { user, isConfigured, signOut } = useAuth();
-  const [showAuth, setShowAuth] = useState(false);
 
   const navigation = [
     {
@@ -136,14 +134,15 @@ export default function Navigation() {
                   </button>
                 </div>
               ) : (
-                // 未ログイン：ログイン/登録ボタンを表示
-                <button
-                  onClick={() => setShowAuth(true)}
+                // 未ログイン：ログインページへのリンクを表示
+                <Link
+                  href="/login"
+                  onClick={() => setIsOpen(false)}
                   className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
                 >
                   <LogIn size={18} />
                   ログイン / 登録
-                </button>
+                </Link>
               )}
             </div>
           )}
@@ -184,8 +183,6 @@ export default function Navigation() {
         </div>
       </div>
 
-      {/* 認証モーダル */}
-      <AuthModal isOpen={showAuth} onClose={() => setShowAuth(false)} />
     </>
   );
 }

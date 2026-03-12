@@ -48,7 +48,7 @@ export default function Home() {
   const [profile, setProfile] = useState<import('@/lib/storage').UserProfile | null>(null);
   const [detailMode, setDetailMode] = useState(false); // 台本詳細表示中はフィルター非表示
 
-  // プロファイル読み込み
+  // プロファイル・前回フィルター読み込み
   useEffect(() => {
     const savedProfile = storage.getProfile();
     if (savedProfile) {
@@ -57,6 +57,12 @@ export default function Home() {
         ...prev,
         tone: savedProfile.preferredTone
       }));
+    }
+
+    // 前回のフィルター設定を復元
+    const savedFilters = storage.getLastFilters();
+    if (savedFilters) {
+      setFilters(savedFilters);
     }
   }, []);
 

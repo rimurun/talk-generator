@@ -18,7 +18,10 @@ interface UseTopicsReturn {
 }
 
 export function useTopics(): UseTopicsReturn {
-  const [topics, setTopics] = useState<Topic[]>([]);
+  const [topics, setTopics] = useState<Topic[]>(() => {
+    // ページ遷移・リロード時に前回の生成結果を復元
+    return storage.getLastTopics();
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usage, setUsage] = useState<UsageStats | null>(null);
@@ -119,8 +122,10 @@ export function useTopics(): UseTopicsReturn {
 
       const data = await response.json();
       setProgressStep('✅ 完了！');
-      
+
       setTopics(data.topics);
+      storage.setLastTopics(data.topics);
+      storage.setLastFilters(filters);
 
       // 生成したタイトルを保存（次回重複防止）
       if (data.topics && data.topics.length > 0) {
@@ -212,8 +217,10 @@ export function useTopics(): UseTopicsReturn {
 
       const data = await response.json();
       setProgressStep('✅ バッチ生成完了！');
-      
+
       setTopics(data.topics);
+      storage.setLastTopics(data.topics);
+      storage.setLastFilters(fullFilters);
 
       // レート制限カウンター更新（バッチ生成は通常のAPIコールより多くカウント）
       storage.updateRateLimit('topic', data.totalCost || 0);

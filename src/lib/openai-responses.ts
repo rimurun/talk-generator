@@ -90,14 +90,19 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
     try {
       if (DEBUG) console.log(`🔄 トピック生成試行 ${attempt}/${maxRetries}`);
       
-      // カテゴリ別検索クエリ
+      // 動的な日付文字列を生成（検索の鮮度を保つ）
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月`;
+      const todayStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+
+      // カテゴリ別検索クエリ（日付を動的に埋め込み）
       const categoryQueries = {
-        'ニュース': '日本 最新ニュース 政治 経済 社会 テクノロジー 2026年2月',
-        'エンタメ': 'エンタメ アニメ 映画 音楽 芸能 ゲーム 話題 海外セレブ ハリウッド 2026',
-        'SNS': 'SNS トレンド Twitter Instagram YouTube 日本 海外バズ 2026',
-        'TikTok': 'TikTok バズ チャレンジ 日本 海外 流行 2026',
-        '海外おもしろ': '海外 おもしろニュース 珍事件 珍ニュース 面白い事件 世界の変なニュース びっくり ユニーク 衝撃 笑える 2026',
-        '事件事故': '事件 事故 災害 速報 日本 世界 海外 国際ニュース 2026年2月'
+        'ニュース': `日本 最新ニュース 今日 ${todayStr} 政治 経済 社会 テクノロジー`,
+        'エンタメ': `エンタメ 最新 今週 ${dateStr} アニメ 映画 音楽 芸能 ゲーム 話題`,
+        'SNS': `SNS トレンド 今日 ${todayStr} Twitter X Instagram YouTube バズ`,
+        'TikTok': `TikTok 今日 ${todayStr} バズ チャレンジ トレンド 日本 海外`,
+        '海外おもしろ': `海外 おもしろニュース 最新 ${dateStr} 珍事件 珍ニュース 面白い ユニーク 衝撃`,
+        '事件事故': `事件 事故 災害 速報 今日 ${todayStr} 日本 世界`
       };
 
       // カテゴリフィルターに応じた検索クエリ選択
@@ -109,8 +114,8 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
       const keyword = (filters as any).keyword?.trim();
       if (keyword) {
         searchQueries = searchQueries.map(q => `${keyword} ${q}`);
-        // キーワード単体の検索も追加
-        searchQueries.unshift(`${keyword} 最新ニュース 2026`);
+        // キーワード単体の検索も追加（今日の日付で鮮度を確保）
+        searchQueries.unshift(`${keyword} 最新ニュース 今日 ${todayStr}`);
       }
 
       const categoryFilter = filters.categories.length > 0 ? 
@@ -143,7 +148,9 @@ ${filters.includeIncidents ? '- 事件事故: 1件（事件・事故・災害）
 ※ニュース・エンタメに偏らず、全カテゴリから均等に生成必須` 
         : '';
       
-      const input = `${timeContext}の配信向けトピック生成。
+      const input = `${todayStr} ${timeContext}の配信向けトピック生成。
+
+【重要】必ず今日（${todayStr}）時点の最新情報を検索してください。古いニュースは除外。
 
 検索: ${searchQueries.slice(0, 3).join(' / ')}
 ${categoryFilter}

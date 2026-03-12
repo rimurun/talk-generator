@@ -541,6 +541,51 @@ class StorageService {
   }
 
   // ===========================================================
+  // 生成済みトピック永続化（ページ遷移・リロード対策）
+  // ===========================================================
+
+  getLastTopics(): Topic[] {
+    if (!this.isClient) return [];
+    const data = localStorage.getItem('talk-generator-last-topics');
+    if (!data) return [];
+    try {
+      const parsed = JSON.parse(data);
+      // 24時間以上前のデータは破棄
+      if (parsed.savedAt && Date.now() - new Date(parsed.savedAt).getTime() > 24 * 60 * 60 * 1000) {
+        localStorage.removeItem('talk-generator-last-topics');
+        return [];
+      }
+      return parsed.topics || [];
+    } catch {
+      return [];
+    }
+  }
+
+  setLastTopics(topics: Topic[]): void {
+    if (!this.isClient) return;
+    localStorage.setItem('talk-generator-last-topics', JSON.stringify({
+      topics,
+      savedAt: new Date().toISOString()
+    }));
+  }
+
+  getLastFilters(): import('@/types').FilterOptions | null {
+    if (!this.isClient) return null;
+    const data = localStorage.getItem('talk-generator-last-filters');
+    if (!data) return null;
+    try {
+      return JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  setLastFilters(filters: import('@/types').FilterOptions): void {
+    if (!this.isClient) return;
+    localStorage.setItem('talk-generator-last-filters', JSON.stringify(filters));
+  }
+
+  // ===========================================================
   // 全データクリア
   // ===========================================================
 
@@ -553,7 +598,9 @@ class StorageService {
       'talk-generator-ratings',
       'talk-generator-ratelimit',
       'talk-generator-prev-titles',
-      'talk-generator-daily-usage'
+      'talk-generator-daily-usage',
+      'talk-generator-last-topics',
+      'talk-generator-last-filters'
     ];
     keys.forEach(key => localStorage.removeItem(key));
   }
