@@ -7,6 +7,7 @@ export interface Topic {
   riskLevel: 'low' | 'medium' | 'high';
   sourceUrl: string;
   publishedAt?: string; // 記事公開日（YYYY-MM-DD or "不明"）
+  talkingPoint?: string; // 配信で話す時のキモ（視聴者がリアクションしやすい切り口）
   createdAt: string;
 }
 

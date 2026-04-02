@@ -259,6 +259,15 @@ export default function TopicCard({ topic, onClick, onTeleprompter }: TopicCardP
         {cleanSummaryText(topic.summary)}
       </p>
 
+      {/* 配信ポイント */}
+      {topic.talkingPoint && (
+        <div className="mb-3 px-3 py-2 rounded-lg bg-cyan-500/8 border border-cyan-500/20">
+          <p className="text-xs text-cyan-300 leading-relaxed">
+            {topic.talkingPoint}
+          </p>
+        </div>
+      )}
+
       {/* メトリクス */}
       <div className="space-y-3">
         {/* センシティブ度 */}
