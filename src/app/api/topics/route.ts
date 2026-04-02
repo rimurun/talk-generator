@@ -73,10 +73,13 @@ export async function POST(request: NextRequest) {
                 )
               );
 
+              // 各カテゴリから均等にピックしてバランスを保つ
+              const perCat = Math.ceil(15 / results.length);
+              const balancedTopics = results.flatMap(r => r.topics.slice(0, perCat));
+
               // 重複除去してSSE送信
-              const allTopics = results.flatMap(r => r.topics);
               const seen = new Set<string>();
-              const uniqueTopics = allTopics.filter(t => {
+              const uniqueTopics = balancedTopics.filter(t => {
                 const key = t.title.toLowerCase().slice(0, 20);
                 if (seen.has(key)) return false;
                 seen.add(key);
@@ -167,14 +170,15 @@ export async function POST(request: NextRequest) {
           )
         );
 
-        // 結果を集約
-        const allTopics = results.flatMap(r => r.topics);
+        // 各カテゴリから均等にピックしてバランスを保つ
+        const perCat = Math.ceil(15 / results.length);
+        const balancedTopics = results.flatMap(r => r.topics.slice(0, perCat));
         const totalCost = results.reduce((sum, r) => sum + r.cost, 0);
         const anyCached = results.some(r => r.cached);
 
         // 重複除去（タイトルベース）
         const seen = new Set<string>();
-        const uniqueTopics = allTopics.filter(t => {
+        const uniqueTopics = balancedTopics.filter(t => {
           const key = t.title.toLowerCase().slice(0, 20);
           if (seen.has(key)) return false;
           seen.add(key);
