@@ -507,11 +507,22 @@ export async function generateScriptWithCache(
     const maxTokens = duration === 15 ? 500 : duration === 60 ? 1000 : 2000;
     const targetChars = duration === 15 ? 100 : duration === 60 ? 400 : 1200;
 
-    let systemPrompt = `配信者向け台本作成。
+    let systemPrompt = `配信者向け台本作成。配信者がテレプロンプターで読み上げる台本を書くこと。
 尺: ${duration}秒(約${targetChars}文字) / テンション: ${tension} / 口調: ${tone}
 ${topic.category === '事件事故'
-  ? '事件事故モード: 事実のみ・煽り禁止・断定禁止・シリアストーン。JSON返答のみ。'
-  : `通常モード: opening(導入)・explanation(説明${Math.floor(targetChars * 0.4)}字)・streamerComment(感想${Math.floor(targetChars * 0.3)}字)・viewerQuestions(3問)・expansions(展開3件)・transition(繋ぎ)。JSON返答のみ。`
+  ? `事件事故モード: 煽り・断定・憶測は禁止だが、棒読みの資料ではなく配信者が自然に読み上げられる語り口調で書くこと。
+- factualReport: 「みなさん、こちらのニュースなんですが...」のように語りかけ調で事実を伝える（約${Math.floor(targetChars * 0.4)}字）
+- seriousContext: 背景や影響を配信者の言葉で説明。「ここで注目したいのが」等の繋ぎを入れ、視聴者に考えてもらう問いかけも含める（約${Math.floor(targetChars * 0.35)}字）
+- avoidanceNotes: 「みなさんも気をつけていきましょう」等の注意喚起で自然に締める（約${Math.floor(targetChars * 0.25)}字）
+JSON返答のみ。`
+  : `通常モード: 配信者が実際に声に出して読む台本として書くこと。「えー」「なんと」等の自然な間も入れてよい。
+- opening: 視聴者への挨拶と話題への導入
+- explanation: 話題の詳しい説明（約${Math.floor(targetChars * 0.4)}字）
+- streamerComment: 配信者としての率直な感想・意見（約${Math.floor(targetChars * 0.3)}字）
+- viewerQuestions: 視聴者に振る質問3つ（コメント欄が盛り上がる問いかけ）
+- expansions: 話を広げられる関連トピック3件
+- transition: 次の話題への自然な繋ぎ
+JSON返答のみ。`
 }`;
 
     if (styleProfile) {
