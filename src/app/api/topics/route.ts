@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateTopicsWithWebSearch, generateTopicsStream } from '@/lib/openai-responses';
+import { generateTopicsWithWebSearch } from '@/lib/openai-responses';
 import { mockTopics } from '@/lib/mock-data';
 import { GenerateTopicsRequest, Topic } from '@/types';
 import { checkRateLimit } from '@/lib/server-rate-limit';
@@ -90,10 +90,10 @@ export async function POST(request: NextRequest) {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify(topic)}\n\n`));
               }
             } else {
-              // 単一カテゴリ: 従来のストリーミング
-              for await (const topic of generateTopicsStream(filters, previousTitles)) {
-                const data = JSON.stringify(topic);
-                controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+              // 単一カテゴリ: 非ストリーミングで生成しSSE配信
+              const result = await generateTopicsWithWebSearch(filters, previousTitles);
+              for (const topic of result.topics) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(topic)}\n\n`));
               }
             }
             // 完了シグナル
@@ -234,7 +234,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('トピック生成エラー:', error);
 
-    if (error instanceof Error && error.message.includes('OpenAI API')) {
+    if (error instanceof Error && (error.message.includes('Perplexity API') || error.message.includes('OpenAI API'))) {
       return NextResponse.json(
         {
           error: 'AI生成サービスでエラーが発生しました。しばらく後に再試行してください。',
