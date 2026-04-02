@@ -1,13 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateScriptWithCache } from '@/lib/openai-responses';
 import { GenerateScriptRequest } from '@/types';
+import { checkRateLimit } from '@/lib/server-rate-limit';
 
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
+  // レート制限チェック
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || request.headers.get('x-real-ip')
+    || 'unknown';
+  const rateCheck = checkRateLimit(ip, '/api/script');
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'リクエスト制限を超えました。しばらくお待ちください。' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)),
+          'X-RateLimit-Remaining': String(rateCheck.remaining),
+        },
+      }
+    );
+  }
+
+  let body: GenerateScriptRequest & { styleProfile?: string };
   try {
-    // styleProfile は GenerateScriptRequest に定義されていないため any で受け取る
-    const body: GenerateScriptRequest & { styleProfile?: string } = await request.json();
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: 'リクエストボディの解析に失敗しました' },
+      { status: 400 }
+    );
+  }
+
+  try {
 
     // バリデーション
     if (!body.topic && !body.topicId) {
@@ -38,9 +65,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // トピック情報の構築（topicId単体の場合はフォールバック）
+    const topic = body.topic || {
+      id: body.topicId || `fallback-${Date.now()}`,
+      title: '',
+      category: 'ニュース' as const,
+      summary: '',
+      sensitivityLevel: 1 as const,
+      riskLevel: 'low' as const,
+    };
+
     // 台本生成（キャッシュ・コスト対応）。スタイルプロファイルも渡す
     const result = await generateScriptWithCache(
-      body.topic || { id: body.topicId!, title: '', category: 'ニュース', summary: '', sensitivityLevel: 1, riskLevel: 'low' },
+      topic,
       body.duration,
       body.tension,
       body.tone,
@@ -65,19 +102,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // OpenAI API エラーの場合
-    if (error instanceof Error && error.message.includes('OpenAI API')) {
+    // OpenAI API エラーの場合（キー無効、レート制限等）
+    const errMsg = error instanceof Error ? error.message : String(error);
+    if (errMsg.includes('OpenAI') || errMsg.includes('API') || errMsg.includes('api')) {
       return NextResponse.json(
-        { 
+        {
           error: 'AI生成サービスでエラーが発生しました。しばらく後に再試行してください。',
-          details: error.message 
+          details: errMsg
         },
         { status: 503 }
       );
     }
-    
+
     return NextResponse.json(
-      { error: '台本生成中にエラーが発生しました' },
+      { error: `台本生成中にエラーが発生しました: ${errMsg}` },
       { status: 500 }
     );
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getApiUsageStats } from '@/lib/openai-responses';
 import { memoryCache } from '@/lib/cache';
+import { getCostStats } from '@/lib/cost-control';
 
 export async function GET() {
   try {
@@ -9,6 +10,9 @@ export async function GET() {
 
     // キャッシュ統計を取得（インメモリ + DB 統合）
     const cacheStats = await memoryCache.getStatsWithDb();
+
+    // コスト制御の統計を取得（インメモリ・ベストエフォート）
+    const costStats = getCostStats();
 
     // 月間コスト推定（1日20回使用想定）
     const dailyCost = usage.estimatedCost * 20;
@@ -52,6 +56,9 @@ export async function GET() {
           '使用量が80%を超えました。残り使用量にご注意ください。' :
           null
       },
+
+      // コスト制御統計（インメモリ・ベストエフォート）
+      costControl: costStats,
 
       // 更新日時
       updatedAt: new Date().toISOString()

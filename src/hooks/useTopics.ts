@@ -1,4 +1,4 @@
-﻿import { useState, useCallback } from 'react';
+﻿import { useState, useCallback, useRef } from 'react';
 import { Topic, FilterOptions, UsageStats } from '@/types';
 import { storage } from '@/lib/storage';
 import { getRateLimit as getDailyLimit } from '@/lib/rate-limit';
@@ -28,6 +28,10 @@ export function useTopics(): UseTopicsReturn {
   const [lastRequestTime, setLastRequestTime] = useState(0);
   const [progressStep, setProgressStep] = useState<string | null>(null);
   const [lastFilters, setLastFilters] = useState<FilterOptions | null>(null);
+
+  // stale closure回避用のref
+  const loadingRef = useRef(false);
+  const lastRequestTimeRef = useRef(0);
 
   const COOLDOWN_TIME = 2000; // 2秒のクールダウン
 
@@ -117,7 +121,7 @@ export function useTopics(): UseTopicsReturn {
               receivedTopics.push(topic);
               // Reactステートを更新してUIにトピックを追加
               setTopics(prev => [...prev, topic]);
-              setProgressStep(`🤖 ${receivedTopics.length}件取得中...`);
+              setProgressStep(`${receivedTopics.length}件取得中...`);
             }
           } catch {
             // JSONパース失敗は無視
@@ -150,29 +154,37 @@ export function useTopics(): UseTopicsReturn {
 
   // トピック生成（ストリーミングをデフォルトとして使用）
   const generateTopics = useCallback(async (filters: FilterOptions) => {
-    if (loading || isOnCooldown) return;
+    // useRef経由で最新のloading/cooldown状態を確認
+    if (loadingRef.current || Date.now() - lastRequestTimeRef.current < COOLDOWN_TIME) return;
 
     if (!checkRateLimit()) return;
 
     try {
       setLoading(true);
+      loadingRef.current = true;
       setError(null);
       setLastFilters(filters);
       setLastRequestTime(Date.now());
+      lastRequestTimeRef.current = Date.now();
 
-      setProgressStep('🔍 ニュース検索中...');
+      setProgressStep('ニュース検索中...');
 
       // ストリーミングで生成（1件ずつ表示）
-      await generateTopicsStreaming(filters);
+      const streamResult = await generateTopicsStreaming(filters);
 
-      setProgressStep('✅ 完了！');
+      // ストリーミング結果が空の場合はフォールバック
+      if (streamResult.length === 0) {
+        throw new Error('ストリーミング結果が0件');
+      }
+
+      setProgressStep('完了');
       updateUsage();
 
     } catch (error) {
       console.error('トピック生成エラー:', error);
       // ストリーミング失敗時は非ストリーミングにフォールバック
       try {
-        console.log('ストリーミング失敗、通常モードにフォールバック...');
+        setProgressStep('再試行中...');
         const previousTitles = storage.getPreviousTopicTitles();
         const response = await fetch('/api/topics', {
           method: 'POST',
@@ -181,21 +193,26 @@ export function useTopics(): UseTopicsReturn {
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
+          const errorData = await response.json().catch(() => ({}));
           let errorMessage = errorData.error || 'トピック生成に失敗しました';
           if (response.status === 429) {
             errorMessage = 'API制限に達しました。少し時間をおいてから再試行してください';
           } else if (response.status >= 500) {
-            errorMessage = 'ネットワークエラー：サーバーに問題が発生している可能性があります';
+            errorMessage = 'サーバーエラーが発生しました。しばらく後に再試行してください';
           }
           throw new Error(errorMessage);
         }
 
         const data = await response.json();
+
+        if (!data.topics || data.topics.length === 0) {
+          throw new Error('トピックが生成されませんでした。条件を変えて再試行してください');
+        }
+
         setTopics(data.topics);
         storage.setLastTopics(data.topics);
         storage.setLastFilters(filters);
-        if (data.topics && data.topics.length > 0) {
+        if (data.topics.length > 0) {
           storage.savePreviousTopicTitles(data.topics.map((t: Topic) => t.title));
         }
         if (!data.cached) {
@@ -214,34 +231,38 @@ export function useTopics(): UseTopicsReturn {
       }
     } finally {
       setLoading(false);
+      loadingRef.current = false;
       setProgressStep(null);
     }
-  }, [loading, isOnCooldown]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // バッチ生成
   const batchGenerate = useCallback(async (
-    categories: string[], 
-    count: number, 
-    diversityMode: boolean, 
+    categories: string[],
+    count: number,
+    diversityMode: boolean,
     filters: Omit<FilterOptions, 'categories'>
   ) => {
-    if (loading || isOnCooldown) return;
-    
+    if (loadingRef.current || Date.now() - lastRequestTimeRef.current < COOLDOWN_TIME) return;
+
     if (!checkRateLimit()) return;
 
     const fullFilters = { ...filters, categories };
 
     try {
       setLoading(true);
+      loadingRef.current = true;
       setError(null);
       setLastFilters(fullFilters);
       setLastRequestTime(Date.now());
+      lastRequestTimeRef.current = Date.now();
 
-      // 進捗表示（実際のAPI待機に合わせた段階表示）
-      setProgressStep('🔍 ニュース一括検索中...');
+      // 進捗表示
+      setProgressStep('ニュース一括検索中...');
 
-      const progressTimer = setTimeout(() => setProgressStep(`📝 ${count}件のトピック分析中...`), 3000);
-      const progressTimer2 = setTimeout(() => setProgressStep('🤖 AI一括処理中...'), 8000);
+      const progressTimer = setTimeout(() => setProgressStep(`${count}件のトピック分析中...`), 3000);
+      const progressTimer2 = setTimeout(() => setProgressStep('AI一括処理中...'), 8000);
 
       const response = await fetch('/api/batch', {
         method: 'POST',
@@ -258,7 +279,7 @@ export function useTopics(): UseTopicsReturn {
 
       clearTimeout(progressTimer);
       clearTimeout(progressTimer2);
-      setProgressStep('🤖 AI一括処理中...');
+      setProgressStep('AI一括処理中...');
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -275,7 +296,7 @@ export function useTopics(): UseTopicsReturn {
       }
 
       const data = await response.json();
-      setProgressStep('✅ バッチ生成完了！');
+      setProgressStep('バッチ生成完了');
 
       setTopics(data.topics);
       storage.setLastTopics(data.topics);
@@ -301,9 +322,11 @@ export function useTopics(): UseTopicsReturn {
       setError(error instanceof Error ? error.message : 'バッチ生成中にエラーが発生しました');
     } finally {
       setLoading(false);
+      loadingRef.current = false;
       setProgressStep(null);
     }
-  }, [loading, isOnCooldown]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const clearError = useCallback(() => {
     setError(null);

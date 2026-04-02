@@ -2,6 +2,31 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+
+// Stripe Checkoutへリダイレクトする関数（コンポーネント外に定義）
+async function startCheckout(
+  email: string | undefined,
+  setLoading: (v: boolean) => void
+) {
+  setLoading(true);
+  try {
+    const res = await fetch('/api/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      alert(data.error || '決済ページの作成に失敗しました');
+    }
+  } catch {
+    alert('決済処理中にエラーが発生しました');
+  } finally {
+    setLoading(false);
+  }
+}
 import {
   Check,
   X,
@@ -101,10 +126,12 @@ function FeatureRow({ label, available }: { label: string; available: boolean })
 }
 
 export default function PricingPage() {
-  // Proボタンのアラート
-  const handleProClick = () => {
-    alert('近日公開予定です。楽しみにお待ちください。');
-  };
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+
+  // Stripe設定済みかどうか（クライアントはNEXT_PUBLIC_*のみ参照可能）
+  const isStripeReady = !!process.env.NEXT_PUBLIC_STRIPE_PRICE_ID;
+
+  const handleCheckout = () => startCheckout(undefined, setCheckoutLoading);
 
   return (
     <div className="container mx-auto px-4 py-8 md:py-12 max-w-4xl">
@@ -182,13 +209,20 @@ export default function PricingPage() {
             ))}
           </ul>
 
-          {/* CTA */}
-          <button
-            onClick={handleProClick}
-            className="w-full py-3 px-6 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold text-sm transition-all duration-200 shadow-lg hover:shadow-blue-500/25 hover:scale-[1.02] active:scale-[0.99]"
-          >
-            Pro にアップグレード
-          </button>
+          {/* Stripe設定済みなら決済ボタン、未設定なら近日公開表示 */}
+          {isStripeReady ? (
+            <button
+              onClick={handleCheckout}
+              disabled={checkoutLoading}
+              className="w-full py-3 px-6 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold text-sm transition-all duration-200 shadow-lg hover:shadow-blue-500/25 hover:scale-[1.02] active:scale-[0.99] disabled:opacity-50"
+            >
+              {checkoutLoading ? '処理中...' : 'Pro にアップグレード'}
+            </button>
+          ) : (
+            <div className="w-full py-3 px-6 rounded-xl bg-gray-700/50 border border-gray-600 text-gray-400 text-sm font-medium text-center cursor-not-allowed">
+              近日公開予定
+            </div>
+          )}
         </div>
       </div>
 
@@ -227,14 +261,22 @@ export default function PricingPage() {
         <p className="text-gray-400 text-sm mb-5">
           TalkGen Pro で、毎回のネタ探しから解放されましょう。
         </p>
-        <button
-          onClick={handleProClick}
-          className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold px-8 py-3 rounded-xl transition-all duration-200 hover:scale-105"
-        >
-          <Zap size={18} />
-          Pro プランを試す
-        </button>
-        <p className="text-xs text-gray-500 mt-3">近日公開予定</p>
+        {/* 下部CTA：Stripe設定済みなら決済ボタン、未設定なら近日公開表示 */}
+        {isStripeReady ? (
+          <button
+            onClick={handleCheckout}
+            disabled={checkoutLoading}
+            className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold px-8 py-3 rounded-xl transition-all duration-200 shadow-lg hover:shadow-blue-500/25 hover:scale-[1.02] active:scale-[0.99] disabled:opacity-50"
+          >
+            <Zap size={18} />
+            {checkoutLoading ? '処理中...' : 'Pro にアップグレード'}
+          </button>
+        ) : (
+          <div className="inline-flex items-center gap-2 bg-gray-700/50 border border-gray-600 text-gray-400 font-semibold px-8 py-3 rounded-xl cursor-not-allowed">
+            <Zap size={18} />
+            Pro プラン - 近日公開
+          </div>
+        )}
       </div>
     </div>
   );

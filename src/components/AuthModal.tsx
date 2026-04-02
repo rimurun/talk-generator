@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthProvider';
 import { X } from 'lucide-react';
 
@@ -17,6 +17,59 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+
+  // モーダル本体への参照（フォーカストラップで使用）
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // フォーカストラップ（ESCで閉じる + Tabキーをモーダル内に制限）
+  // ※ useEffectはHooksルールに従い、早期リターンより前に宣言する
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const modal = modalRef.current;
+    if (!modal) return;
+
+    // フォーカス可能な要素を取得
+    const getFocusableElements = () => {
+      return modal.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      if (e.key !== 'Tab') return;
+
+      const focusable = getFocusableElements();
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    // モーダルを開いた時に最初のフォーカス可能要素へ移動
+    const firstFocusable = getFocusableElements()[0];
+    if (firstFocusable) firstFocusable.focus();
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   // モーダルが閉じている場合はレンダリングしない
   if (!isOpen) return null;
@@ -54,7 +107,13 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md p-6 relative">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="認証"
+        className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md p-6 relative"
+      >
         {/* 閉じるボタン */}
         <button
           onClick={onClose}

@@ -2,9 +2,28 @@
 import { generateTopicsWithWebSearch } from '@/lib/openai-responses';
 import { BatchGenerationRequest, BatchGenerationResponse } from '@/types';
 import { memoryCache, createBatchCacheKey } from '@/lib/cache';
+import { checkRateLimit } from '@/lib/server-rate-limit';
 
 
 export async function POST(request: NextRequest) {
+  // レート制限チェック
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || request.headers.get('x-real-ip')
+    || 'unknown';
+  const rateCheck = checkRateLimit(ip, '/api/batch');
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'リクエスト制限を超えました。しばらくお待ちください。' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)),
+          'X-RateLimit-Remaining': String(rateCheck.remaining),
+        },
+      }
+    );
+  }
+
   try {
     const body: BatchGenerationRequest = await request.json();
     

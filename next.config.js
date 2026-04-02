@@ -17,11 +17,11 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // Next.js requires unsafe-eval and unsafe-inline
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://www.googletagmanager.com", // Next.js requires unsafe-eval and unsafe-inline
               "style-src 'self' 'unsafe-inline'", // Tailwind requires unsafe-inline
               "img-src 'self' data: blob: https:",
-              "font-src 'self' data:",
-              "connect-src 'self' https://api.openai.com https://*.supabase.co",
+              "font-src 'self' data:", // next/fontでセルフホスト
+              "connect-src 'self' https://api.openai.com https://*.supabase.co https://www.google-analytics.com https://analytics.google.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

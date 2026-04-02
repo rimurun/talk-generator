@@ -3,8 +3,11 @@
 import { useState, useEffect } from 'react';
 import { storage, UserProfile } from '@/lib/storage';
 import { tonePresets } from '@/lib/mock-data';
+import { useAuth } from '@/components/AuthProvider';
+import { getSupabaseClient } from '@/lib/supabase';
 
 export default function SettingsPage() {
+  const { user, isConfigured } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [newNgWord, setNewNgWord] = useState('');
   const [newSpecialty, setNewSpecialty] = useState('');
@@ -14,6 +17,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -214,6 +219,52 @@ export default function SettingsPage() {
     };
     reader.readAsText(file);
     event.target.value = ''; // ファイル選択をリセット
+  };
+
+  const handleDeleteAccount = async () => {
+    // 二重確認（破壊的操作のため）
+    const confirmed = window.confirm('本当にアカウントを削除しますか？この操作は取り消せません。');
+    if (!confirmed) return;
+    const doubleConfirmed = window.confirm('すべてのデータが削除されます。本当によろしいですか？');
+    if (!doubleConfirmed) return;
+
+    setDeletingAccount(true);
+    setDeleteError(null);
+
+    try {
+      // クライアントサイドの Supabase からセッションを取得
+      const supabase = getSupabaseClient();
+      if (!supabase) {
+        setDeleteError('Supabaseクライアントが初期化されていません');
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setDeleteError('ログインセッションが見つかりません');
+        return;
+      }
+
+      const res = await fetch('/api/account', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '削除に失敗しました');
+      }
+
+      // ローカルデータをクリアしてログインページへリダイレクト
+      localStorage.clear();
+      window.location.href = '/login';
+    } catch (e: any) {
+      setDeleteError(e.message);
+    } finally {
+      setDeletingAccount(false);
+    }
   };
 
   if (loading) {
@@ -592,6 +643,26 @@ export default function SettingsPage() {
             設定は自動的にブラウザに保存されます
           </p>
         </section>
+
+        {/* アカウント削除セクション（Supabase設定済み・ログイン済みユーザーのみ表示） */}
+        {isConfigured && user && (
+          <div className="mt-12 border-t border-red-500/20 pt-8">
+            <h3 className="text-lg font-semibold text-red-400 mb-2">危険な操作</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              アカウントを削除すると、お気に入り・生成履歴・評価データがすべて失われます。この操作は取り消せません。
+            </p>
+            <button
+              onClick={handleDeleteAccount}
+              disabled={deletingAccount}
+              className="px-4 py-2 bg-red-500/20 border border-red-500/50 text-red-300 hover:bg-red-500/30 rounded-lg text-sm transition-colors disabled:opacity-50"
+            >
+              {deletingAccount ? '削除中...' : 'アカウントを削除する'}
+            </button>
+            {deleteError && (
+              <p className="mt-2 text-sm text-red-400">{deleteError}</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

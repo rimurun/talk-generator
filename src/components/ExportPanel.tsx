@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Script, Topic } from '@/types';
-import { X, Copy, Download, Monitor, Link, Check } from 'lucide-react';
+import { X, Copy, Download, Monitor, Link, Check, MessageSquare, Youtube, Twitter } from 'lucide-react';
 
 interface ExportPanelProps {
   isOpen: boolean;
@@ -12,9 +12,61 @@ interface ExportPanelProps {
 }
 
 // コピー成功状態を管理するキーの型
-type CopyKey = 'text' | 'markdown' | 'obsUrl' | 'shareUrl' | null;
+type CopyKey = 'text' | 'markdown' | 'obsUrl' | 'shareUrl' | 'sns-x' | 'sns-youtube' | 'sns-tiktok' | null;
 
 export default function ExportPanel({ isOpen, onClose, script, topic }: ExportPanelProps) {
+  // パネル本体への参照（フォーカストラップで使用）
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // フォーカストラップ（ESCで閉じる + Tabキーをパネル内に制限）
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const modal = modalRef.current;
+    if (!modal) return;
+
+    // フォーカス可能な要素を取得
+    const getFocusableElements = () => {
+      return modal.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      if (e.key !== 'Tab') return;
+
+      const focusable = getFocusableElements();
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    // パネルを開いた時に最初のフォーカス可能要素へ移動
+    const firstFocusable = getFocusableElements()[0];
+    if (firstFocusable) firstFocusable.focus();
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   // OBS 設定
   const [obsFontSize, setObsFontSize] = useState('24');
   const [obsColor, setObsColor] = useState('white');
@@ -150,7 +202,8 @@ ${c.transition || ''}
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // ダウンロード開始を待ってからBlob URLを破棄
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   // ファイル名のサニタイズ（使用不可な文字を除去）
@@ -213,11 +266,12 @@ ${c.transition || ''}
 
       {/* スライドインパネル */}
       <div
+        ref={modalRef}
         className={`fixed top-0 right-0 h-full w-96 bg-gray-900 border-l border-gray-700 z-50 flex flex-col shadow-2xl transform transition-transform duration-300 ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         role="dialog"
-        aria-label="エクスポートパネル"
+        aria-label="エクスポート設定"
         aria-modal="true"
       >
         {/* ヘッダー */}
@@ -407,6 +461,88 @@ ${c.transition || ''}
                   台本データをブラウザに保存しました。OBSのBrowser SourceはURLを開いていれば自動更新されます。
                 </p>
               )}
+            </div>
+          </section>
+
+          {/* ---- SNSエクスポートセクション ---- */}
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <MessageSquare size={16} className="text-pink-400" />
+              <h3 className="text-sm font-semibold text-gray-200 uppercase tracking-wider">SNS投稿用</h3>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              台本を各プラットフォーム向けに自動変換してコピー
+            </p>
+            <div className="space-y-2">
+              {/* X (Twitter) 用 — 140文字 */}
+              <button
+                onClick={() => {
+                  const c = script.content;
+                  const hook = c.opening || c.factualReport || '';
+                  const comment = c.streamerComment || c.seriousContext || '';
+                  // つかみ + コメントを140字以内に収める
+                  let text = `${hook}\n\n${comment}`;
+                  if (text.length > 135) text = text.slice(0, 132) + '...';
+                  text += '\n#配信';
+                  copyToClipboard(text, 'sns-x');
+                }}
+                className="w-full flex items-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg text-sm transition-colors"
+              >
+                <Twitter size={16} className="text-sky-400 shrink-0" />
+                <div className="text-left flex-1 min-w-0">
+                  <div className="font-medium">X (Twitter) 用</div>
+                  <div className="text-xs text-gray-400">つかみ + コメント — 140字以内</div>
+                </div>
+                {copySuccess === 'sns-x' ? <Check size={14} className="text-green-400 shrink-0" /> : <Copy size={14} className="text-gray-400 shrink-0" />}
+              </button>
+
+              {/* YouTube概要欄用 */}
+              <button
+                onClick={() => {
+                  const c = script.content;
+                  const sections = [
+                    topic.title,
+                    '',
+                    c.opening || c.factualReport || '',
+                    '',
+                    c.explanation || c.seriousContext || '',
+                    '',
+                    '---',
+                    `出典: ${topic.sourceUrl || ''}`,
+                    '',
+                    '#配信 #トーク #トレンド',
+                  ];
+                  copyToClipboard(sections.filter(s => s !== undefined).join('\n'), 'sns-youtube');
+                }}
+                className="w-full flex items-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg text-sm transition-colors"
+              >
+                <Youtube size={16} className="text-red-400 shrink-0" />
+                <div className="text-left flex-1 min-w-0">
+                  <div className="font-medium">YouTube 概要欄用</div>
+                  <div className="text-xs text-gray-400">タイトル + つかみ + 説明 + 出典</div>
+                </div>
+                {copySuccess === 'sns-youtube' ? <Check size={14} className="text-green-400 shrink-0" /> : <Copy size={14} className="text-gray-400 shrink-0" />}
+              </button>
+
+              {/* TikTok キャプション用 — 150字 */}
+              <button
+                onClick={() => {
+                  const c = script.content;
+                  const hook = c.opening || c.factualReport || '';
+                  let text = hook;
+                  if (text.length > 145) text = text.slice(0, 142) + '...';
+                  text += '\n#配信 #トレンド #話題';
+                  copyToClipboard(text, 'sns-tiktok');
+                }}
+                className="w-full flex items-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg text-sm transition-colors"
+              >
+                <MessageSquare size={16} className="text-purple-400 shrink-0" />
+                <div className="text-left flex-1 min-w-0">
+                  <div className="font-medium">TikTok キャプション用</div>
+                  <div className="text-xs text-gray-400">つかみを150字以内 + ハッシュタグ</div>
+                </div>
+                {copySuccess === 'sns-tiktok' ? <Check size={14} className="text-green-400 shrink-0" /> : <Copy size={14} className="text-gray-400 shrink-0" />}
+              </button>
             </div>
           </section>
 

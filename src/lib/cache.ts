@@ -20,7 +20,7 @@ interface CacheStats {
 
 class MemoryCache {
   private cache = new Map<string, CacheEntry<any>>();
-  private readonly TOPIC_CACHE_TTL = 30 * 60 * 1000; // 30分
+  private readonly TOPIC_CACHE_TTL = 15 * 60 * 1000; // 15分
   private readonly SCRIPT_CACHE_TTL = 3 * 60 * 60 * 1000; // 3時間
   private readonly BATCH_CACHE_TTL = 45 * 60 * 1000; // 45分
 

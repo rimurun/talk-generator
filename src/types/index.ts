@@ -6,6 +6,7 @@ export interface Topic {
   sensitivityLevel: 1 | 2 | 3;
   riskLevel: 'low' | 'medium' | 'high';
   sourceUrl: string;
+  publishedAt?: string; // 記事公開日（YYYY-MM-DD or "不明"）
   createdAt: string;
 }
 

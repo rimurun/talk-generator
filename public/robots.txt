@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /settings
+
+Sitemap: https://talk-generator-beta.vercel.app/sitemap.xml

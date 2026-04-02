@@ -49,3 +49,5 @@ final-test.js
 test-topics-result.json
 CACHE_OPTIMIZATION_REPORT.md
 jest.config.js.template
+
+.env*.local

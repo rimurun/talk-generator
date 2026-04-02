@@ -2,11 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateTopicsWithWebSearch, generateTopicsStream } from '@/lib/openai-responses';
 import { mockTopics } from '@/lib/mock-data';
 import { GenerateTopicsRequest, Topic } from '@/types';
+import { checkRateLimit } from '@/lib/server-rate-limit';
 
 // Vercel Function timeout (Hobby=60s max)
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
+  // レート制限チェック
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || request.headers.get('x-real-ip')
+    || 'unknown';
+  const rateCheck = checkRateLimit(ip, '/api/topics');
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'リクエスト制限を超えました。しばらくお待ちください。' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)),
+          'X-RateLimit-Remaining': String(rateCheck.remaining),
+        },
+      }
+    );
+  }
+
   try {
     const body: GenerateTopicsRequest = await request.json();
     
@@ -29,14 +48,56 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'フィルター条件が不正です' }, { status: 400 });
       }
 
+      // カテゴリ未選択時は全カテゴリ展開（ニュース偏り防止）
+      const defaultCategories = ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ'];
+      const resolvedCategories = filters.categories.length > 0
+        ? filters.categories
+        : (filters.includeIncidents ? [...defaultCategories, '事件事故'] : defaultCategories);
+      const useParallelMode = resolvedCategories.length >= 2;
+
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         async start(controller) {
           try {
-            // ストリーミングジェネレーターからトピックを1件ずつSSEとして送信
-            for await (const topic of generateTopicsStream(filters, previousTitles)) {
-              const data = JSON.stringify(topic);
-              controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+            if (useParallelMode) {
+              // カテゴリ並列分割: 非ストリーミングで並列生成し、結果をSSEで1件ずつ送信
+              const chunkSize = Math.ceil(resolvedCategories.length / Math.min(3, resolvedCategories.length));
+              const groups: string[][] = [];
+              for (let i = 0; i < resolvedCategories.length; i += chunkSize) {
+                groups.push(resolvedCategories.slice(i, i + chunkSize));
+              }
+
+              const results = await Promise.all(
+                groups.map(group =>
+                  generateTopicsWithWebSearch(
+                    { ...filters, categories: group },
+                    previousTitles
+                  ).catch(err => {
+                    console.error(`ストリーム並列: カテゴリ ${group.join(',')} エラー:`, err);
+                    return { topics: [] as Topic[], cost: 0, cached: false };
+                  })
+                )
+              );
+
+              // 重複除去してSSE送信
+              const allTopics = results.flatMap(r => r.topics);
+              const seen = new Set<string>();
+              const uniqueTopics = allTopics.filter(t => {
+                const key = t.title.toLowerCase().slice(0, 20);
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+              }).slice(0, 15);
+
+              for (const topic of uniqueTopics) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(topic)}\n\n`));
+              }
+            } else {
+              // 単一カテゴリ: 従来のストリーミング
+              for await (const topic of generateTopicsStream(filters, previousTitles)) {
+                const data = JSON.stringify(topic);
+                controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+              }
             }
             // 完了シグナル
             controller.enqueue(encoder.encode('data: [DONE]\n\n'));
@@ -92,9 +153,11 @@ export async function POST(request: NextRequest) {
 
     try {
       // 🚀 並列化: カテゴリが2つ以上なら分割して同時実行
+      // カテゴリ未選択時は全カテゴリを展開して並列化（ニュース偏り防止）
+      const allCategories = ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ'];
       const categories = filters.categories.length > 0
         ? filters.categories
-        : []; // 空=全カテゴリ → 1回のAPI呼び出しで全部取得
+        : (filters.includeIncidents ? [...allCategories, '事件事故'] : allCategories);
 
       if (categories.length >= 2) {
         // カテゴリを2-3グループに分割して並列実行（API呼び出し最小化）
@@ -139,9 +202,9 @@ export async function POST(request: NextRequest) {
         result = await generateTopicsWithWebSearch(filters, previousTitles);
       }
     } catch (webSearchError) {
-      console.log('WebSearch API failed, using mock data:', webSearchError);
+      console.log('WebSearch API failed, using mock data:', String(webSearchError));
 
-      let filteredTopics = mockTopics;
+      let filteredTopics = [...mockTopics];
 
       if (filters.categories.length > 0) {
         filteredTopics = filteredTopics.filter(topic =>

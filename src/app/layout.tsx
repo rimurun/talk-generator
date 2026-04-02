@@ -1,9 +1,24 @@
 import type { Metadata } from 'next'
+import { Inter, Noto_Sans_JP } from 'next/font/google'
 import './globals.css'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import AuthProvider from '@/components/AuthProvider'
 import AppShell from '@/components/AppShell'
 import ServiceWorkerRegistrar from '@/components/ServiceWorkerRegistrar'
+import GoogleAnalytics from '@/components/GoogleAnalytics'
+
+// セルフホストフォント（CSP対応・パフォーマンス最適化）
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+})
+
+const notoSansJP = Noto_Sans_JP({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-noto-sans-jp',
+})
 
 export const metadata: Metadata = {
   title: 'トーク生成ツール - 配信用リアルタイム・トーク生成',
@@ -20,14 +35,6 @@ export const metadata: Metadata = {
     siteName: 'トーク生成ツール',
     title: 'トーク生成ツール - 配信用リアルタイム・トーク生成',
     description: '配信者がボタン1つで最新ニュース・エンタメ・SNSトレンド・TikTok話題を取得し、配信でそのまま読めるトーク台本に自動変換',
-    images: [
-      {
-        url: '/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'トーク生成ツール',
-      },
-    ],
   },
   twitter: {
     card: 'summary_large_image',
@@ -35,7 +42,6 @@ export const metadata: Metadata = {
     creator: '@talk_generator',
     title: 'トーク生成ツール - 配信用リアルタイム・トーク生成',
     description: '配信者がボタン1つで最新トーク台本を生成！ニュース・エンタメ・SNS・TikTokトレンド対応',
-    images: ['/og-image.png'],
   },
   metadataBase: new URL('https://talk-generator-beta.vercel.app'),
 }
@@ -55,7 +61,8 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="TalkGen" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.svg" />
       </head>
-      <body className="min-h-screen bg-black text-white antialiased">
+      <body className={`min-h-screen bg-black text-white antialiased ${inter.variable} ${notoSansJP.variable}`}>
+        <GoogleAnalytics />
         <ServiceWorkerRegistrar />
         <ErrorBoundary>
           <AuthProvider>

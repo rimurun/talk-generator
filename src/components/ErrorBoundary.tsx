@@ -2,6 +2,7 @@
 
 import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangleIcon, RefreshIcon } from './icons';
+import { trackError } from '@/lib/error-tracking';
 
 interface Props {
   children: ReactNode;
@@ -24,18 +25,12 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // 開発環境でのエラー情報出力
-    if (process.env.NODE_ENV === 'development') {
-      console.error('ErrorBoundary caught an error:', error, errorInfo);
-    }
-    
-    // 本番環境では分析ツールにエラー送信（将来の実装）
-    // if (process.env.NODE_ENV === 'production') {
-    //   analytics.track('error', {
-    //     error: error.toString(),
-    //     errorInfo: errorInfo.componentStack
-    //   });
-    // }
+    // エラーをトラッキングシステムに記録（LocalStorage + コンソール出力）
+    // 将来的にSentry等の外部サービスへの送信もここで行う
+    trackError(error, 'error', {
+      componentStack: errorInfo.componentStack,
+      source: 'ErrorBoundary',
+    });
   }
 
   handleRetry = () => {

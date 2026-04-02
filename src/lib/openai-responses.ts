@@ -1,10 +1,23 @@
 import { Topic, Script, FilterOptions } from '@/types';
 import { memoryCache, createTopicsCacheKey, createScriptCacheKey } from './cache';
+import { filterTopics, sanitizeScript } from './content-moderation';
+
+// web_search_previewツール設定型
+interface WebSearchTool {
+  type: string;
+  search_context_size?: string;
+  user_location?: {
+    type: string;
+    country: string;
+    region: string;
+    timezone: string;
+  };
+}
 
 // ストリーミングAPI用リクエスト型
 interface OpenAIStreamRequest {
   model: string;
-  tools: Array<{ type: string }>;
+  tools: WebSearchTool[];
   input: string;
   stream: true;
 }
@@ -23,7 +36,7 @@ const COST_PER_1M_OUTPUT_TOKENS = 0.60; // $0.60
 
 interface OpenAIResponsesRequest {
   model: string;
-  tools: Array<{ type: string }>;
+  tools: WebSearchTool[];
   input: string;
 }
 
@@ -73,7 +86,7 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
     }
 
     const fuzzyMatch = memoryCache.getTopicsFuzzy(filters);
-    if (fuzzyMatch && fuzzyMatch.similarity >= 0.65) {
+    if (fuzzyMatch && fuzzyMatch.similarity >= 0.80) {
       console.log(`🔄 トピックキャッシュヒット（ファジーマッチ: ${Math.round(fuzzyMatch.similarity * 100)}%）`);
       trackUsage(0, 0, true);
       return {
@@ -103,14 +116,14 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
       const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月`;
       const todayStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
 
-      // カテゴリ別検索クエリ（日付を動的に埋め込み）
+      // カテゴリ別検索クエリ（日付を先頭に配置してウェイトを上げる）
       const categoryQueries = {
-        'ニュース': `日本 最新ニュース 今日 ${todayStr} 政治 経済 社会 テクノロジー`,
-        'エンタメ': `エンタメ 最新 今週 ${dateStr} アニメ 映画 音楽 芸能 ゲーム 話題`,
-        'SNS': `SNS トレンド 今日 ${todayStr} Twitter X Instagram YouTube バズ`,
-        'TikTok': `TikTok 今日 ${todayStr} バズ チャレンジ トレンド 日本 海外`,
-        '海外おもしろ': `海外 おもしろニュース 最新 ${dateStr} 珍事件 珍ニュース 面白い ユニーク 衝撃`,
-        '事件事故': `事件 事故 災害 速報 今日 ${todayStr} 日本 世界`
+        'ニュース': `${todayStr} 日本 最新ニュース 速報 政治 経済 社会 テクノロジー`,
+        'エンタメ': `${todayStr} エンタメ 最新 アニメ 映画 音楽 芸能 ゲーム 話題`,
+        'SNS': `${todayStr} SNS トレンド Twitter X Instagram YouTube バズ 話題`,
+        'TikTok': `${todayStr} TikTok バズ チャレンジ トレンド 日本 海外`,
+        '海外おもしろ': `${todayStr} 海外 おもしろニュース 珍事件 珍ニュース 面白い ユニーク 衝撃`,
+        '事件事故': `${todayStr} 事件 事故 速報 最新ニュース 逮捕 火災 災害 日本`
       };
 
       // カテゴリ詳細フィルターの適用（期間・地域・サブカテゴリでクエリを強化）
@@ -200,22 +213,45 @@ ${filters.includeIncidents ? '- 事件事故: 1件（事件・事故・災害）
         ? `\n【カテゴリ詳細指定】\n${detailSummaryLines.join('\n')}`
         : '';
 
+      // カテゴリ選択に応じたカテゴリリスト文字列（プロンプトのフォーマット指定用）
+      const allowedCategories = filters.categories.length > 0
+        ? filters.categories.join('/')
+        : 'ニュース/エンタメ/SNS/TikTok/海外おもしろ/事件事故';
+
+      // 単一カテゴリ指定時のカテゴリ固定指示
+      const singleCategoryInstruction = filters.categories.length === 1
+        ? `【重要】すべてのトピックのカテゴリは「${filters.categories[0]}」にしてください。他のカテゴリは生成禁止。`
+        : '';
+
       // 圧縮プロンプト（約40%トークン削減）
-      const input = `${todayStr}${timeContext}配信ネタ生成。最新情報のみ。
-検索: ${searchQueries.slice(0, 2).join(' / ')}
+      const input = `${todayStr}${timeContext}配信ネタ生成。最新情報のみ。web検索で実際の話題を取得。
+【鮮度厳守】直近24〜48時間以内に報道・投稿された話題のみ。古いニュースは絶対に含めないこと。
+検索: ${searchQueries.slice(0, 5).join(' / ')}
 ${categoryFilter}${keyword ? `\nキーワード: ${keyword}` : ''}
 ${filters.includeIncidents ? '' : '事件事故除外'}テンション: ${filters.tension}${detailSummary}
-${categoryBalanceInstruction ? '各カテゴリ均等に生成\n' : ''}
-10-15件生成（国内外バランス）:
-1. **[タイトル30字以内]**
-   - カテゴリ: [ニュース/エンタメ/SNS/TikTok/海外おもしろ/事件事故]
-   - 要約: [2行]
+${singleCategoryInstruction}
+${categoryBalanceInstruction}
+
+15件生成（国内外バランス）。必ず以下の形式を厳守:
+1. **タイトルをここに書く（50字以内、「...」は使わない）**
+   - カテゴリ: [${allowedCategories}]
+   - 記事日付: YYYY-MM-DD（情報の公開日・発生日。不明なら「不明」）
+   - 要約: この話題の内容を具体的に1〜2文で説明する（「〜についての最新情報です」のような空虚な文は禁止）
    - 配信適性: [1行]
 ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(0, 15).join(', ')}` : ''}`;
 
       const requestBody: OpenAIResponsesRequest = {
         model: MODEL,
-        tools: [{ type: 'web_search_preview' }],
+        tools: [{
+          type: 'web_search_preview',
+          search_context_size: 'high',
+          user_location: {
+            type: 'approximate',
+            country: 'JP',
+            region: '東京都',
+            timezone: 'Asia/Tokyo'
+          }
+        }],
         input: input
       };
 
@@ -382,6 +418,16 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
       filteredTopics = balanceTopicCategories(filteredTopics);
     }
 
+    // カテゴリフィルタリング（指定カテゴリ以外のトピックを除外）
+    if (filters.categories.length > 0) {
+      const allowedSet = new Set(filters.categories);
+      const beforeCount = filteredTopics.length;
+      filteredTopics = filteredTopics.filter(topic => allowedSet.has(topic.category));
+      if (filteredTopics.length < beforeCount) {
+        console.log(`[CategoryFilter] ${beforeCount - filteredTopics.length}件の対象外カテゴリトピックを除外`);
+      }
+    }
+
     // サーバーサイド重複フィルタリング（プロンプトだけに頼らない二重チェック）
     if (hasPreviousTitles) {
       const prevSet = new Set(previousTitles!.map(t => t.toLowerCase()));
@@ -412,11 +458,19 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
     const totalTokens = usage ? (usage.input_tokens + usage.output_tokens) : 0;
     trackUsage(totalTokens, cost, false);
 
-    // キャッシュ保存
-    memoryCache.setTopics(cacheKey, filteredTopics);
+    // システムNGワードによるフィルタリング
+    const { filtered: safeTopics, removed: removedCount } = filterTopics(filteredTopics);
+    if (removedCount > 0) {
+      console.log(`[ContentModeration] ${removedCount}件のトピックをフィルタリング`);
+    }
+
+    // キャッシュ保存（0件の場合はキャッシュしない）
+    if (safeTopics.length > 0) {
+      memoryCache.setTopics(cacheKey, safeTopics);
+    }
 
     return {
-      topics: filteredTopics.slice(0, 15),
+      topics: safeTopics.slice(0, 15),
       cost,
       cached: false
     };
@@ -488,14 +542,14 @@ export async function* generateTopicsStream(
   const todayStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
   const timeContext = now.getHours() < 12 ? '朝' : now.getHours() < 18 ? '昼' : '夜';
 
-  // カテゴリ別検索クエリ（日付付き）
+  // カテゴリ別検索クエリ（日付を先頭に配置してウェイトを上げる）
   const categoryQueries: Record<string, string> = {
-    'ニュース': `日本 最新ニュース 今日 ${todayStr} 政治 経済 社会 テクノロジー`,
-    'エンタメ': `エンタメ 最新 今週 ${dateStr} アニメ 映画 音楽 芸能 ゲーム 話題`,
-    'SNS': `SNS トレンド 今日 ${todayStr} Twitter X Instagram YouTube バズ`,
-    'TikTok': `TikTok 今日 ${todayStr} バズ チャレンジ トレンド 日本 海外`,
-    '海外おもしろ': `海外 おもしろニュース 最新 ${dateStr} 珍事件 珍ニュース 面白い ユニーク 衝撃`,
-    '事件事故': `事件 事故 災害 速報 今日 ${todayStr} 日本 世界`
+    'ニュース': `${todayStr} 日本 最新ニュース 速報 政治 経済 社会 テクノロジー`,
+    'エンタメ': `${todayStr} エンタメ 最新 アニメ 映画 音楽 芸能 ゲーム 話題`,
+    'SNS': `${todayStr} SNS トレンド Twitter X Instagram YouTube バズ 話題`,
+    'TikTok': `${todayStr} TikTok バズ チャレンジ トレンド 日本 海外`,
+    '海外おもしろ': `${todayStr} 海外 おもしろニュース 珍事件 珍ニュース 面白い ユニーク 衝撃`,
+    '事件事故': `${todayStr} 事件 事故 速報 最新ニュース 逮捕 火災 災害 日本`
   };
 
   const searchQueries = filters.categories.length > 0
@@ -507,22 +561,57 @@ export async function* generateTopicsStream(
     ? `カテゴリ指定: ${filters.categories.join(', ')}`
     : '全カテゴリ（バランス重視）';
 
-  // 圧縮プロンプト（ストリーミング用）
-  const input = `${todayStr}${timeContext}配信ネタ生成。最新情報のみ。
-検索: ${searchQueries.slice(0, 2).join(' / ')}
+  // カテゴリバランス指示（ストリーミング用）
+  const streamBalanceInstruction = filters.categories.length === 0 || filters.categories.length > 1
+    ? `【カテゴリバランス厳守】以下の割合で必ず生成:
+- ニュース: 3件（政治・経済・社会・テクノロジー）
+- エンタメ: 3件（アニメ・映画・音楽・芸能・ゲーム）
+- SNS: 3件（X/Twitter・Instagram・YouTubeのバズ・トレンド）
+- TikTok: 3件（バズ動画・チャレンジ・トレンド音楽）
+- 海外おもしろ: 3件（海外の珍ニュース・ユニークな話題）
+${filters.includeIncidents ? '- 事件事故: 1件' : ''}
+※ニュース・エンタメだけに偏るのは禁止。SNS・TikTok・海外おもしろも必須`
+    : '';
+
+  // カテゴリ選択に応じたカテゴリリスト文字列
+  const streamAllowedCategories = filters.categories.length > 0
+    ? filters.categories.join('/')
+    : 'ニュース/エンタメ/SNS/TikTok/海外おもしろ/事件事故';
+
+  // 単一カテゴリ指定時のカテゴリ固定指示
+  const streamSingleCategoryInstruction = filters.categories.length === 1
+    ? `【重要】すべてのトピックのカテゴリは「${filters.categories[0]}」にしてください。他のカテゴリは生成禁止。`
+    : '';
+
+  // 圧縮プロンプト（ストリーミング用・検索クエリ拡大）
+  const input = `${todayStr}${timeContext}配信ネタ生成。最新情報のみ。web検索で実際の話題を取得。
+【鮮度厳守】直近24〜48時間以内に報道・投稿された話題のみ。古いニュースは絶対に含めないこと。
+検索: ${searchQueries.slice(0, 5).join(' / ')}
 ${categoryFilter}${keyword ? `\nキーワード: ${keyword}` : ''}
 ${filters.includeIncidents ? '' : '事件事故除外'}テンション: ${filters.tension}
+${streamSingleCategoryInstruction}
+${streamBalanceInstruction}
 
-10-15件生成:
-1. **[タイトル30字以内]**
-   - カテゴリ: [ニュース/エンタメ/SNS/TikTok/海外おもしろ/事件事故]
-   - 要約: [2行]
+15件生成。必ず以下の形式を厳守:
+1. **タイトルをここに書く（50字以内、「...」は使わない）**
+   - カテゴリ: [${streamAllowedCategories}]
+   - 記事日付: YYYY-MM-DD（情報の公開日・発生日。不明なら「不明」）
+   - 要約: この話題の内容を具体的に1〜2文で説明する（「〜についての最新情報です」のような空虚な文は禁止）
    - 配信適性: [1行]
 ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(0, 15).join(', ')}` : ''}`;
 
   const requestBody: OpenAIStreamRequest = {
     model: MODEL,
-    tools: [{ type: 'web_search_preview' }],
+    tools: [{
+      type: 'web_search_preview',
+      search_context_size: 'high',
+      user_location: {
+        type: 'approximate',
+        country: 'JP',
+        region: '東京都',
+        timezone: 'Asia/Tokyo'
+      }
+    }],
     input,
     stream: true
   };
@@ -564,6 +653,10 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
   let buffer = '';           // SSEイベントバッファ
   let yieldedTopicCount = 0;
   const yieldedTitles = new Set<string>();
+  // 前回パース時点のテキスト長。一定量蓄積するまでパースを抑制する
+  let lastParsedLength = 0;
+  // ストリーミング中パースの最小増分（短すぎる増分でのパースを防ぐ）
+  const MIN_PARSE_DELTA = 200;
 
   try {
     while (true) {
@@ -592,6 +685,18 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
         if (event.type === 'response.output_text.delta' && event.delta) {
           accumulatedText += event.delta;
 
+          // 前回パースからの増分が MIN_PARSE_DELTA 未満の場合はスキップ
+          // → タイトル行が末尾に来た状態（未完成）でパースするのを防ぐ
+          const delta = accumulatedText.length - lastParsedLength;
+          if (delta < MIN_PARSE_DELTA) continue;
+
+          // 次のトピック開始行が存在することを確認してからパース
+          // （現在の最後のトピック行が完結していない場合を除外する）
+          const hasNextTopicBoundary = isTextReadyForParsing(accumulatedText);
+          if (!hasNextTopicBoundary) continue;
+
+          lastParsedLength = accumulatedText.length;
+
           // 蓄積テキストからトピックブロックを検出してyield
           const newTopics = extractNewTopicsFromStream(
             accumulatedText,
@@ -600,6 +705,8 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
           );
 
           for (const topic of newTopics) {
+            // カテゴリフィルタリング（指定カテゴリ以外はスキップ）
+            if (filters.categories.length > 0 && !filters.categories.includes(topic.category)) continue;
             yieldedTitles.add(topic.title.substring(0, 15));
             yieldedTopicCount++;
             yield topic;
@@ -615,6 +722,8 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
       yieldedTitles
     );
     for (const topic of finalTopics) {
+      // カテゴリフィルタリング（指定カテゴリ以外はスキップ）
+      if (filters.categories.length > 0 && !filters.categories.includes(topic.category)) continue;
       yieldedTitles.add(topic.title.substring(0, 15));
       yieldedTopicCount++;
       yield topic;
@@ -623,6 +732,31 @@ ${previousTitles && previousTitles.length > 0 ? `除外: ${previousTitles.slice(
   } finally {
     reader.releaseLock();
   }
+}
+
+/**
+ * ストリーミング途中のテキストがパースに十分かどうか判定
+ * 末尾が「タイトル行のみ」で終わっている場合は false を返す
+ * （タイトルが完全に揃っていても要約が未着信の場合は yield しない）
+ */
+function isTextReadyForParsing(text: string): boolean {
+  const lines = text.trimEnd().split('\n');
+  // 末尾から空行を除いた最後の行を取得
+  let lastNonEmpty = '';
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].trim()) {
+      lastNonEmpty = lines[i].trim();
+      break;
+    }
+  }
+
+  // 末尾行が番号付きタイトル行（例: `1. **...`）の場合はまだ不完全
+  if (lastNonEmpty.match(/^\d+\.\s*\*\*/)) return false;
+
+  // 少なくとも1つの完成したトピックブロックが存在するか確認
+  // （次の番号付き行か、ストリーム末尾で最初のトピックが完結しているか）
+  const hasAtLeastOneComplete = /^\d+\.\s*\*\*.*\*\*[^\n]*\n/m.test(text);
+  return hasAtLeastOneComplete;
 }
 
 /**
@@ -754,29 +888,47 @@ JSON形式で返答:
   }
 }`;
 
-    // 標準Chat Completions APIを使用
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        max_tokens: maxTokens,
-        temperature: 0.8
-      })
-    });
+    // 標準Chat Completions APIを使用（429リトライ付き）
+    const maxRetries = 3;
+    let data: any;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          max_tokens: maxTokens,
+          temperature: 0.8
+        })
+      });
 
-    if (!response.ok) {
+      if (response.ok) {
+        data = await response.json();
+        break;
+      }
+
+      // 429レート制限: バックオフしてリトライ
+      if (response.status === 429 && attempt < maxRetries) {
+        const retryAfter = parseInt(response.headers.get('retry-after') || '0', 10);
+        const delay = retryAfter > 0 ? retryAfter * 1000 : attempt * 2000;
+        console.log(`OpenAI 429 - ${delay}ms後にリトライ (${attempt}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
       throw new Error(`OpenAI API Error: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    if (!data) {
+      throw new Error('OpenAI API: 最大リトライ回数を超えました');
+    }
     
     // スクリプトデータ解析
     let scriptData: Script;
@@ -809,11 +961,14 @@ JSON形式で返答:
     const totalTokens = usage ? (usage.prompt_tokens + usage.completion_tokens) : 0;
     trackUsage(totalTokens, cost, false);
 
+    // 台本テキストのサニタイズ（NGワードを「***」に置換）
+    const safeScriptData = sanitizeScriptContent(scriptData);
+
     // キャッシュ保存
-    memoryCache.setScript(cacheKey, scriptData);
+    memoryCache.setScript(cacheKey, safeScriptData);
 
     return {
-      script: scriptData,
+      script: safeScriptData,
       cost,
       cached: false
     };
@@ -829,29 +984,70 @@ JSON形式で返答:
  */
 function parseTopicsFromText(messageText: string, annotations: any[]): Topic[] {
   const topics: Topic[] = [];
-  
+
   // メッセージを行で分割してトピックを探す
   const lines = messageText.split('\n');
   let currentTopic: Partial<Topic> = {};
   let topicCount = 0;
-  
+
+  // フィールドラベルのプレフィックスパターン（これで始まる行はタイトルではない）
+  // 例: 「カテゴリ: ニュース」「要約: ...」「**カテゴリ: ...**」など
+  const FIELD_LABEL_RE = /^(\*{0,2})(カテゴリ|記事日付|要約|配信適性|センシティブ|炎上|ソース|URL|Source|source)[：:*]/i;
+
   for (let i = 0; i < lines.length && topicCount < 15; i++) {
     const line = lines[i].trim();
-    
-    // タイトル行を検出（1. 2. 3. または **で始まる）
-    if (line.match(/^\d+\.\s*\*\*.*\*\*/) || line.match(/^\d+\.\s*.+/) || line.match(/^\*\*.*\*\*/)) {
+
+    // フィールドラベル行は先にスキップ（タイトル行として誤検出しない）
+    if (FIELD_LABEL_RE.test(line)) {
+      // カテゴリ行のみ別途処理
+      if (line.match(/^(\*{0,2})カテゴリ[：:*]/)) {
+        const catMatch = line.replace(/.*カテゴリ[：:*]+\*{0,2}\s*/, '').replace(/[\[\]\*]/g, '').trim();
+        if (catMatch && currentTopic.title) {
+          (currentTopic as any)._gptCategory = catMatch;
+        }
+      }
+      // 記事日付行: 「記事日付: YYYY-MM-DD」のテキスト部分をpublishedAtに設定
+      else if (line.match(/^(\*{0,2})記事日付[：:*]/) && currentTopic.title) {
+        const dateContent = line.replace(/^(\*{0,2})記事日付[：:*]+\s*\*{0,2}\s*/, '').trim();
+        if (dateContent) {
+          (currentTopic as any).publishedAt = dateContent;
+        }
+      }
+      // 要約行: 「要約: テキスト」のテキスト部分をsummaryに追加
+      else if (line.match(/^(\*{0,2})要約[：:*]/) && currentTopic.title) {
+        const summaryContent = line.replace(/^(\*{0,2})要約[：:*]+\s*\*{0,2}\s*/, '').trim();
+        if (summaryContent) {
+          // 「要約:」ラベル後のテキストをsummaryとして設定（上書き優先）
+          currentTopic.summary = summaryContent;
+        }
+      }
+      continue;
+    }
+
+    // ★Bug 1修正: タイトル行は「数字. **タイトル**」形式のみ許可
+    // 「**カテゴリ: ニュース**」のような行を絶対にタイトルと判定しない
+    const isNumberedTitleLine = line.match(/^\d+\.\s*\*\*(.+)\*\*/);
+
+    if (isNumberedTitleLine) {
       // 前のトピックが完了していれば保存
       if (currentTopic.title) {
         finalizeAndAddTopic(currentTopic, topics, annotations, topicCount);
         topicCount++;
       }
-      
-      // 新しいトピック開始
+
+      // 新しいトピック開始（**で囲まれたタイトル部分を抽出）
       let title = line.replace(/^\d+\.\s*/, '').replace(/\*\*/g, '').trim();
-      if (title.length > 30) {
-        title = title.substring(0, 27) + '...';
+      // タイトルが短すぎる場合（5文字未満）はパース成果物の可能性があるのでスキップ
+      if (title.length < 5) {
+        if (DEBUG) console.warn(`[WARN] タイトルが短すぎるためスキップ: "${title}"`);
+        currentTopic = {};
+        continue;
       }
-      
+      // タイトル切り捨ては50文字超のみ（短すぎる制限を緩和）
+      if (title.length > 50) {
+        title = title.substring(0, 47) + '...';
+      }
+
       currentTopic = {
         id: `topic-${Date.now()}-${topicCount}`,
         title: title,
@@ -859,18 +1055,36 @@ function parseTopicsFromText(messageText: string, annotations: any[]): Topic[] {
         createdAt: new Date().toISOString()
       };
     }
-    // カテゴリ行を検出
-    else if (line.match(/カテゴリ[：:]\s*/)) {
-      const catMatch = line.replace(/.*カテゴリ[：:]\s*/, '').replace(/[\[\]]/g, '').trim();
+    // カテゴリ行を検出（ラベルなしインデント行パターン: 「- カテゴリ: XXX」）
+    else if (line.match(/^-\s*カテゴリ[：:]\s*/) && currentTopic.title) {
+      const catMatch = line.replace(/^-\s*カテゴリ[：:]\s*/, '').replace(/[\[\]]/g, '').trim();
       if (catMatch) {
         (currentTopic as any)._gptCategory = catMatch;
       }
     }
-    // 説明行を検出
+    // 記事日付行（インデント行パターン: 「- 記事日付: YYYY-MM-DD」）
+    else if (line.match(/^-\s*記事日付[：:]\s*/) && currentTopic.title) {
+      const dateContent = line.replace(/^-\s*記事日付[：:]\s*/, '').trim();
+      if (dateContent) {
+        (currentTopic as any).publishedAt = dateContent;
+      }
+    }
+    // 要約行（ラベルなしインデント行パターン: 「- 要約: XXX」）
+    else if (line.match(/^-\s*要約[：:]\s*/) && currentTopic.title) {
+      const summaryContent = line.replace(/^-\s*要約[：:]\s*/, '').trim();
+      if (summaryContent) {
+        currentTopic.summary = summaryContent;
+      }
+    }
+    // 配信適性行はsummaryには含めない
+    else if (line.match(/^-\s*配信適性[：:]/)) {
+      // 無視
+    }
+    // 説明行を検出（summary補完）
     else if (line && !line.match(/^[\s]*$/) && currentTopic.title) {
-      // カテゴリ/配信適性/要約のラベル行は除外してsummaryに入れない
-      const cleaned = line.replace(/^-\s*/, '').replace(/^(要約|配信適性)[：:]\s*/, '');
-      if (cleaned && !line.match(/^-\s*(配信適性)[：:]/)) {
+      // ダッシュ始まりでラベルがない行のみsummaryに追加
+      const cleaned = line.replace(/^-\s*/, '').trim();
+      if (cleaned) {
         if (currentTopic.summary) {
           currentTopic.summary += ' ' + cleaned;
         } else {
@@ -879,20 +1093,29 @@ function parseTopicsFromText(messageText: string, annotations: any[]): Topic[] {
       }
     }
   }
-  
+
   // 最後のトピックも追加
   if (currentTopic.title) {
     finalizeAndAddTopic(currentTopic, topics, annotations, topicCount);
   }
-  
+
   // パース結果が0件の場合のみログ出力（ダミー補完は廃止）
   if (topics.length === 0) {
     console.log("[WARN] GPTレスポンスからトピックをパースできませんでした");
   }
 
+  // タイトルが短すぎるトピック（パースアーティファクト）を除去
+  const validTopics = topics.filter(t => {
+    if (t.title.length < 5) {
+      if (DEBUG) console.warn(`[WARN] 最終フィルタでスキップ（タイトル短すぎ）: "${t.title}"`);
+      return false;
+    }
+    return true;
+  });
+
   // 重複除去（タイトル類似度）
   const seen = new Set();
-  const unique = topics.filter(t => {
+  const unique = validTopics.filter(t => {
     const key = t.title.substring(0, 15);
     if (seen.has(key)) return false;
     seen.add(key);
@@ -913,13 +1136,21 @@ function finalizeAndAddTopic(topic: Partial<Topic>, topics: Topic[], annotations
   
   // カテゴリ判定: GPTが指定したカテゴリを優先、なければテキストから推測
   const validCategories = ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ', '事件事故'];
-  const gptCat = (topic as any)._gptCategory?.trim();
+  let gptCat = (topic as any)._gptCategory?.trim();
+  // GPTが返す揺れに対応（部分一致でマッチ）
+  if (gptCat && !validCategories.includes(gptCat)) {
+    const matched = validCategories.find(vc => gptCat!.includes(vc) || vc.includes(gptCat!));
+    if (matched) gptCat = matched;
+  }
   const guessed = guessCategory(topic.title, topic.summary || '');
   const category = (gptCat && validCategories.includes(gptCat)) ? gptCat : guessed;
   if (typeof console !== 'undefined') console.log('[DEBUG] title:', topic.title, '| gptCat:', gptCat, '| guessed:', guessed, '| final:', category);
   
   // 要約のクリーニング＆長さ調整
-  let summary = topic.summary || `${category}に関する最新の話題です。`;
+  // summaryが空の場合はテンプレートに頼らず空文字列のまま（フロントで「取得中」などを表示）
+  let summary = (topic.summary && topic.summary.trim().length > 0)
+    ? topic.summary
+    : '';
   // Markdownリンク除去: ([text](url)) → 空、[text](url) → text、(url) → 空
   summary = summary
     .replace(/\(\[([^\]]+)\]\([^)]+\)\)/g, '')
@@ -935,6 +1166,10 @@ function finalizeAndAddTopic(topic: Partial<Topic>, topics: Topic[], annotations
   // センシティブレベル推測
   const sensitivityLevel = guessSensitivityLevel(topic.title, summary);
   
+  // 記事日付の正規化
+  const rawPublishedAt = (topic as any).publishedAt;
+  const publishedAt = rawPublishedAt && rawPublishedAt !== '不明' ? rawPublishedAt : undefined;
+
   topics.push({
     id: topic.id!,
     title: topic.title,
@@ -943,6 +1178,7 @@ function finalizeAndAddTopic(topic: Partial<Topic>, topics: Topic[], annotations
     sensitivityLevel,
     riskLevel: sensitivityLevel >= 3 ? 'high' : sensitivityLevel >= 2 ? 'medium' : 'low',
     sourceUrl: annotations[index % annotations.length]?.url || 'https://news.example.com',
+    publishedAt,
     createdAt: topic.createdAt!
   });
 }
@@ -1037,6 +1273,33 @@ function extractTopicsFromMessage(message: string, filters: FilterOptions): Topi
   // パース失敗時は空配列を返し、呼び出し元でフォールバックトピックを使用
   console.warn('[WARN] トピック抽出失敗、フォールバックモードに移行');
   return generateFallbackTopics(filters);
+}
+
+/**
+ * 台本オブジェクトの全テキストフィールドにサニタイズを適用
+ * contentオブジェクト内の文字列・配列を再帰的に処理する
+ */
+function sanitizeScriptContent(script: Script): Script {
+  // contentの各フィールドをサニタイズ
+  const sanitizedContent: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(script.content as Record<string, unknown>)) {
+    if (typeof value === 'string') {
+      sanitizedContent[key] = sanitizeScript(value);
+    } else if (Array.isArray(value)) {
+      // 配列要素（viewerQuestions, expansions等）も対象
+      sanitizedContent[key] = value.map(item =>
+        typeof item === 'string' ? sanitizeScript(item) : item
+      );
+    } else {
+      sanitizedContent[key] = value;
+    }
+  }
+
+  return {
+    ...script,
+    content: sanitizedContent as Script['content'],
+  };
 }
 
 /**

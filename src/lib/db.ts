@@ -65,7 +65,7 @@ interface CacheRow {
 
 // キャッシュ TTL 設定（ミリ秒）- 環境変数でオーバーライド可能
 const CACHE_TTL = {
-  topic: Number(process.env.CACHE_TTL_TOPIC_MS) || 30 * 60 * 1000,     // 30分
+  topic: Number(process.env.CACHE_TTL_TOPIC_MS) || 15 * 60 * 1000,     // 15分
   script: Number(process.env.CACHE_TTL_SCRIPT_MS) || 3 * 60 * 60 * 1000, // 3時間
   batch: Number(process.env.CACHE_TTL_BATCH_MS) || 45 * 60 * 1000,     // 45分
 };

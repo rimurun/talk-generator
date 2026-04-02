@@ -2,6 +2,7 @@
 // テスト環境設定後に使用
 
 import React from 'react';
+import { vi } from 'vitest';
 // import { render, screen, fireEvent } from '@testing-library/react';
 // import TopicCard from '../TopicCard';
 // import { mockTopics } from '@/lib/mock-data';
@@ -18,7 +19,7 @@ describe('TopicCard', () => {
     sensitivityLevel: 2
   };
 
-  const mockOnClick = jest.fn();
+  const mockOnClick = vi.fn();
 
   it.skip('renders topic information correctly', () => {
     // render(<TopicCard topic={mockTopic} onClick={mockOnClick} />);
@@ -48,7 +49,7 @@ describe('TopicCard', () => {
 
   it.skip('opens external link correctly', () => {
     // const originalOpen = window.open;
-    // window.open = jest.fn();
+    // window.open = vi.fn();
     
     // render(<TopicCard topic={mockTopic} onClick={mockOnClick} />);
     

@@ -282,14 +282,20 @@ export default function TopicCard({ topic, onClick, onTeleprompter }: TopicCardP
       <div className="mt-4 pt-3 border-t border-gray-700">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">
-              {new Date(topic.createdAt).toLocaleDateString('ja-JP', {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              })}
-            </span>
+            {topic.publishedAt ? (
+              <span className="text-xs text-gray-400">
+                {topic.publishedAt}
+              </span>
+            ) : (
+              <span className="text-xs text-gray-500">
+                {new Date(topic.createdAt).toLocaleDateString('ja-JP', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </span>
+            )}
             {isFavorite && (
               <span className="text-xs text-yellow-400">★</span>
             )}
