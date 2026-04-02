@@ -73,6 +73,7 @@ function HomeContent() {
   const [filters, setFilters] = useState<FilterOptions>({
     categories: [],
     includeIncidents: false,
+    timePeriod: 'today',
     duration: 60,
     tension: 'medium',
     tone: 'フレンドリー'
@@ -98,6 +99,7 @@ function HomeContent() {
     const trendingFilters: FilterOptions = {
       categories: category ? [category] : [],
       includeIncidents: false,
+      timePeriod: 'today',
       duration: filters.duration,
       tension: filters.tension,
       tone: filters.tone,
@@ -202,6 +204,7 @@ function HomeContent() {
 
       await batchGenerate(categoriesToUse, batchCount, batchDiversityMode, {
         includeIncidents: filters.includeIncidents,
+        timePeriod: filters.timePeriod,
         duration: filters.duration,
         tension: filters.tension,
         tone: filters.tone

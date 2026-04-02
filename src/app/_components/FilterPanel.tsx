@@ -290,6 +290,32 @@ export default function FilterPanel({
 
         {/* 事件事故はカテゴリ選択で制御（専用チェックボックスは廃止） */}
 
+        {/* 期間選択 */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">
+            期間
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { value: 'today', label: '今日' },
+              { value: 'week', label: '今週' },
+              { value: 'month', label: '今月' },
+            ] as const).map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setFilters(prev => ({ ...prev, timePeriod: option.value }))}
+                className={`py-2.5 px-3 rounded-xl text-sm font-medium transition-all duration-200 border ${
+                  filters.timePeriod === option.value
+                    ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300'
+                    : 'glass-card-light border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-white hover:border-[var(--color-border-alt)]'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* 詳細設定グリッド（尺・テンション・口調） */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           {/* 尺選択 */}

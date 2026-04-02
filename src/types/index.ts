@@ -40,6 +40,7 @@ export interface CategoryDetailFilter {
 export interface FilterOptions {
   categories: string[];
   includeIncidents: boolean;
+  timePeriod: 'today' | 'week' | 'month'; // 期間フィルター
   duration: 15 | 60 | 180;
   tension: 'low' | 'medium' | 'high';
   tone: string;

@@ -341,6 +341,7 @@ export function useTopics(): UseTopicsReturn {
       if (lastFilters.categories.length > 3) {
         await batchGenerate(lastFilters.categories, 15, true, {
           includeIncidents: lastFilters.includeIncidents,
+          timePeriod: lastFilters.timePeriod,
           duration: lastFilters.duration,
           tension: lastFilters.tension,
           tone: lastFilters.tone
