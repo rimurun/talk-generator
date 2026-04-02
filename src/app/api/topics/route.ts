@@ -60,20 +60,14 @@ export async function POST(request: NextRequest) {
         async start(controller) {
           try {
             if (useParallelMode) {
-              // カテゴリ並列分割: 非ストリーミングで並列生成し、結果をSSEで1件ずつ送信
-              const chunkSize = Math.ceil(resolvedCategories.length / Math.min(3, resolvedCategories.length));
-              const groups: string[][] = [];
-              for (let i = 0; i < resolvedCategories.length; i += chunkSize) {
-                groups.push(resolvedCategories.slice(i, i + chunkSize));
-              }
-
+              // 1カテゴリ1グループで並列生成（singleCategoryInstructionが発動し偏り防止）
               const results = await Promise.all(
-                groups.map(group =>
+                resolvedCategories.map(cat =>
                   generateTopicsWithWebSearch(
-                    { ...filters, categories: group },
+                    { ...filters, categories: [cat] },
                     previousTitles
                   ).catch(err => {
-                    console.error(`ストリーム並列: カテゴリ ${group.join(',')} エラー:`, err);
+                    console.error(`ストリーム並列: カテゴリ ${cat} エラー:`, err);
                     return { topics: [] as Topic[], cost: 0, cached: false };
                   })
                 )
@@ -160,19 +154,14 @@ export async function POST(request: NextRequest) {
         : (filters.includeIncidents ? [...allCategories, '事件事故'] : allCategories);
 
       if (categories.length >= 2) {
-        // カテゴリを2-3グループに分割して並列実行（API呼び出し最小化）
-        const chunkSize = Math.ceil(categories.length / Math.min(2, categories.length));
-        const groups: string[][] = [];
-        for (let i = 0; i < categories.length; i += chunkSize) {
-          groups.push(categories.slice(i, i + chunkSize));
-        }
+        // 1カテゴリ1グループで並列実行（singleCategoryInstructionが発動し偏り防止）
         const results = await Promise.all(
-          groups.map(group =>
+          categories.map(cat =>
             generateTopicsWithWebSearch(
-              { ...filters, categories: group },
+              { ...filters, categories: [cat] },
               previousTitles
             ).catch(err => {
-              console.error(`カテゴリグループ ${group.join(',')} エラー:`, err);
+              console.error(`カテゴリ ${cat} エラー:`, err);
               return { topics: [] as Topic[], cost: 0, cached: false };
             })
           )
