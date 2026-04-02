@@ -195,7 +195,15 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
       // システムプロンプト
       const systemPrompt = `配信者向けトーク台本生成AIです。日本のリアルタイムトレンドをWeb検索で取得し、JSON形式で返します。
 必ずcategoryフィールドに正しいカテゴリ名を設定してください。許可されるカテゴリ: ${allowedCategories.join('/')}
-publishedAtは記事の公開日をYYYY-MM-DD形式で。不明なら空文字にしてください。`;
+publishedAtは記事の公開日をYYYY-MM-DD形式で。不明なら空文字にしてください。
+
+【重要：summaryの品質】
+summaryは配信者がこの話題を十分に把握できる詳しさで書くこと。
+- 何が起きたか（事実）
+- なぜ起きたか（背景・経緯）
+- どんな影響があるか（今後の展開・世間の反応）
+を含めて150〜250字程度で説明する。「〜と報じられた」のような1行要約は禁止。
+配信者がこのsummaryだけ読めば視聴者の質問にも答えられるレベルにすること。`;
 
       // ユーザープロンプト
       const userPrompt = `${todayStr}${timeContext}の配信ネタを生成してください。
@@ -206,7 +214,7 @@ ${filters.includeIncidents ? '' : '事件事故は除外。'}テンション: ${
 ${singleCategoryInstruction}
 
 ${filters.categories.length !== 1 ? `各カテゴリから均等に生成してください。` : ''}
-15件生成してください。各トピックのtitle(50字以内)・category・summary(具体的に1-2文)・publishedAt(YYYY-MM-DD)を含めてください。
+15件生成してください。各トピックのtitle(50字以内)・category・summary(背景・経緯・影響を含む150-250字)・publishedAt(YYYY-MM-DD)を含めてください。
 ${previousTitles && previousTitles.length > 0 ? `除外（既出）: ${previousTitles.slice(0, 10).join(', ')}` : ''}`;
 
       // Perplexity Sonar APIリクエスト
@@ -315,7 +323,7 @@ ${previousTitles && previousTitles.length > 0 ? `除外（既出）: ${previousT
           id: `topic-${Date.now()}-${index}`,
           title: raw.title.slice(0, 50),
           category,
-          summary: raw.summary.slice(0, 200),
+          summary: raw.summary.slice(0, 400),
           sensitivityLevel: guessSensitivityLevel(raw.title, raw.summary),
           riskLevel: guessSensitivityLevel(raw.title, raw.summary) >= 3 ? 'high' as const
             : guessSensitivityLevel(raw.title, raw.summary) >= 2 ? 'medium' as const : 'low' as const,
