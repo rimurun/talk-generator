@@ -288,19 +288,7 @@ export default function FilterPanel({
           </div>
         )}
 
-        {/* 事件事故トグル */}
-        <div className="mb-6">
-          <label className="flex items-center space-x-3 text-sm font-medium text-[var(--color-text-secondary)] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={filters.includeIncidents}
-              onChange={(e) => setFilters(prev => ({ ...prev, includeIncidents: e.target.checked }))}
-              className="w-4 h-4 rounded border-[var(--color-border)] focus:ring-2 focus:ring-cyan-500 cursor-pointer"
-              style={{ accentColor: '#00d4ff' }}
-            />
-            <span>事件事故を含める</span>
-          </label>
-        </div>
+        {/* 事件事故はカテゴリ選択で制御（専用チェックボックスは廃止） */}
 
         {/* 詳細設定グリッド（尺・テンション・口調） */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
