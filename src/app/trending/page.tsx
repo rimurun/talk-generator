@@ -923,7 +923,9 @@ export default function TrendingPage() {
               {sources && (
                 <div className="flex flex-wrap items-center justify-center gap-3 mb-3">
                   {[
-                    { label: 'AI検索', active: sources.openai },
+                    { label: 'Perplexity Sonar', active: true },
+                    { label: 'GNews', active: (sources as any).gnewsJp > 0 || (sources as any).gnewsEntertainment > 0 },
+                    { label: 'X API', active: (sources as any).xTrends > 0 },
                     { label: 'Yahoo News', active: sources.yahooRss > 0 },
                     { label: 'Google Trends', active: sources.googleTrends > 0 },
                     { label: 'Wikipedia', active: sources.wikipedia > 0 },
@@ -949,7 +951,7 @@ export default function TrendingPage() {
                 </div>
               )}
               <p className="text-center text-xs text-white/20">
-                6つのデータソースから集約。内容は参考情報です。
+                8つのデータソースから集約。内容は参考情報です。
               </p>
             </div>
           </>
