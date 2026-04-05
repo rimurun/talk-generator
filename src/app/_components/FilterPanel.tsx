@@ -391,6 +391,7 @@ export default function FilterPanel({
         </div>
 
         {/* 適用ボタン */}
+        <div className="neon-divider my-4" />
         <button
           onClick={() => setIsFilterOpen(false)}
           className="w-full mt-6 py-3 rounded-xl font-semibold text-sm text-white transition-all duration-200 active:scale-[0.97]"

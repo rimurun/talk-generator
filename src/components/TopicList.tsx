@@ -85,7 +85,8 @@ export default function TopicList({ topics, filters, onTopicSelect, onBackToList
           {topics.map((topic, index) => (
             <div
               key={topic.id}
-              className={`animate-stagger stagger-${Math.min(index + 1, 6)} opacity-0`}
+              className="hologram-appear"
+              style={{ animationDelay: `${index * 80}ms`, animationFillMode: 'both' }}
             >
               <TopicCard
                 topic={topic}

@@ -95,9 +95,9 @@ export default function Navigation() {
           }
         `}
       >
-        {/* アクティブ時のインジケーターピル */}
+        {/* アクティブ時のネオン左エッジインジケーター */}
         {active && (
-          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-blue-400 rounded-full" />
+          <span className="absolute left-0 top-1/4 bottom-1/4 w-0.5 bg-cyan-400 shadow-[0_0_8px_rgba(0,212,255,0.6)]" />
         )}
 
         <Icon
@@ -348,6 +348,11 @@ export default function Navigation() {
                   `}>
                     {item.name}
                   </span>
+
+                  {/* アクティブ時のネオンアンダーライン */}
+                  {active && (
+                    <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-cyan-400 shadow-[0_0_8px_rgba(0,212,255,0.6),0_0_16px_rgba(0,212,255,0.3)]" />
+                  )}
                 </Link>
               );
             })}

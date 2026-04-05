@@ -182,7 +182,7 @@ export default function TopicCard({ topic, onClick, onTeleprompter }: TopicCardP
       tabIndex={0}
       role="button"
       aria-label={`${topic.title} - ${topic.category} - 台本を表示`}
-      className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 cursor-pointer transition-all duration-300 hover:bg-gray-700/60 hover:border-gray-600 hover:scale-[1.02] focus:outline-none focus:ring-4 focus:ring-blue-500/50 focus:bg-gray-700/60 hover:neon-glow-cyan group relative"
+      className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 cursor-pointer transition-all duration-300 hover:bg-gray-700/60 hover:border-gray-600 hover:scale-[1.02] focus:outline-none focus:ring-4 focus:ring-blue-500/50 focus:bg-gray-700/60 hover:neon-glow-cyan group relative overflow-hidden holo-shimmer hologram-appear"
       style={{
         transform: `perspective(800px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
         transition: 'transform 0.15s ease-out',

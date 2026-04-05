@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Zap, Sparkles } from 'lucide-react';
 
 interface GenerateButtonProps {
@@ -28,12 +29,19 @@ export default function GenerateButton({
   getProgressPercent,
   onGenerate,
 }: GenerateButtonProps) {
+  const [showPulse, setShowPulse] = useState(false);
   const isDisabled = loading || isOnCooldown || (isLoggedIn && remainingRequests === 0);
+
+  const handleClick = () => {
+    setShowPulse(true);
+    setTimeout(() => setShowPulse(false), 800);
+    onGenerate();
+  };
 
   return (
     <div className="flex flex-col items-center gap-4">
       <button
-        onClick={onGenerate}
+        onClick={handleClick}
         disabled={isDisabled}
         aria-label="トーク台本を生成"
         className={`
@@ -53,6 +61,9 @@ export default function GenerateButton({
               : '0 0 32px rgba(0,212,255,0.3), 0 4px 16px rgba(0,0,0,0.4)',
         }}
       >
+        {/* パルスリングエフェクト */}
+        {showPulse && <span className="pulse-ring" />}
+
         {/* ボタン内グレインオーバーレイ */}
         <div
           className="absolute inset-0 opacity-10 pointer-events-none"

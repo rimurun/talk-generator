@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import OnboardingOverlay from '@/components/OnboardingOverlay';
+import GlitchText from '@/components/GlitchText';
 import GuestBanner from './_components/GuestBanner';
 import FilterPanel from './_components/FilterPanel';
 import GenerateButton from './_components/GenerateButton';
@@ -258,7 +259,8 @@ function HomeContent() {
         )}
 
         {/* ヒーローセクション */}
-        <header className="text-center mb-10 md:mb-14 page-slide-enter">
+        <header className="relative text-center mb-10 md:mb-14 page-slide-enter">
+          <div className="energy-orb absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
           {/* ヒーロータイトル */}
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-card-light border border-cyan-500/30 text-xs text-purple-300 mb-5 font-mono tracking-widest shadow-[0_0_10px_rgba(0,212,255,0.15)]">
             <Sparkles size={12} />
@@ -266,7 +268,9 @@ function HomeContent() {
           </div>
 
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-black mb-3 tracking-tight">
-            <span className="gradient-text-hero neon-text-cyan">今日、何を話す？</span>
+            <span className="gradient-text-hero neon-text-cyan">
+              <GlitchText text="今日、何を話す？" />
+            </span>
           </h1>
 
           {/* word-break: keep-all で日本語の単語中途切れを防止 */}
@@ -296,6 +300,8 @@ function HomeContent() {
             </div>
           )}
         </header>
+
+        <div className="neon-divider my-8 mx-auto max-w-md" />
 
         {/* フィルター & 生成パネル（グラスモーフィズムカード） */}
         <div
@@ -335,6 +341,8 @@ function HomeContent() {
             onGenerate={handleGenerate}
           />
         </div>
+
+        <div className="neon-divider my-6 mx-auto max-w-xs" />
 
         {/* エラー表示 */}
         {error && (
@@ -384,23 +392,26 @@ function HomeContent() {
 
         {/* 結果上部のクイックアクションバー（生成完了後のみ表示） */}
         {topics.length > 0 && !loading && !detailMode && (
-          <div className="flex items-center gap-3 mb-4">
-            <button
-              onClick={scrollToFilterAndOpen}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium glass-card-light border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-white hover:border-[var(--color-border-alt)] transition-all duration-200"
-            >
-              <Settings size={14} />
-              フィルター変更
-            </button>
-            <button
-              onClick={handleGenerate}
-              disabled={isOnCooldown}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-cyan-600/70 hover:bg-cyan-600 disabled:opacity-50 text-white transition-colors"
-            >
-              <Sparkles size={14} />
-              再生成
-            </button>
-          </div>
+          <>
+            <div className="neon-divider mb-4 mx-auto max-w-xs" />
+            <div className="flex items-center gap-3 mb-4">
+              <button
+                onClick={scrollToFilterAndOpen}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium glass-card-light border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-white hover:border-[var(--color-border-alt)] transition-all duration-200"
+              >
+                <Settings size={14} />
+                フィルター変更
+              </button>
+              <button
+                onClick={handleGenerate}
+                disabled={isOnCooldown}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium bg-cyan-600/70 hover:bg-cyan-600 disabled:opacity-50 text-white transition-colors"
+              >
+                <Sparkles size={14} />
+                再生成
+              </button>
+            </div>
+          </>
         )}
 
         {/* トピックが空・非ローディング・非エラー時の空状態表示 */}
