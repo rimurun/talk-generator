@@ -14,8 +14,11 @@ export async function POST(request: NextRequest) {
   // 認証チェック
   const auth = await authenticateRequest(request);
 
-  // レート制限チェック
-  const rateCheck = await checkRateLimit(auth.identifier, '/api/topics', auth.isGuest);
+  // レート制限 + コスト上限を並列チェック（DB往復を削減）
+  const [rateCheck, costCheck] = await Promise.all([
+    checkRateLimit(auth.identifier, '/api/topics', auth.isGuest),
+    checkCostLimit(),
+  ]);
   if (!rateCheck.allowed) {
     return NextResponse.json(
       { error: 'リクエスト制限を超えました。しばらくお待ちください。' },
@@ -28,9 +31,6 @@ export async function POST(request: NextRequest) {
       }
     );
   }
-
-  // コスト上限チェック
-  const costCheck = await checkCostLimit();
   if (!costCheck.allowed) {
     return NextResponse.json(
       { error: costCheck.reason || 'API使用量が上限に達しました。' },

@@ -12,17 +12,17 @@ export async function POST(request: NextRequest) {
   // 認証チェック
   const auth = await authenticateRequest(request);
 
-  // レート制限チェック
-  const rateCheck = await checkRateLimit(auth.identifier, '/api/batch', auth.isGuest);
+  // レート制限 + コスト上限を並列チェック
+  const [rateCheck, costCheck] = await Promise.all([
+    checkRateLimit(auth.identifier, '/api/batch', auth.isGuest),
+    checkCostLimit(),
+  ]);
   if (!rateCheck.allowed) {
     return NextResponse.json(
       { error: 'リクエスト制限を超えました。しばらくお待ちください。' },
       { status: 429, headers: { 'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)), 'X-RateLimit-Remaining': String(rateCheck.remaining) } }
     );
   }
-
-  // コスト上限チェック
-  const costCheck = await checkCostLimit();
   if (!costCheck.allowed) {
     return NextResponse.json({ error: costCheck.reason || 'API使用量が上限に達しました。' }, { status: 429 });
   }
