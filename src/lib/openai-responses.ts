@@ -288,7 +288,7 @@ ${previousTitles && previousTitles.length > 0 ? `除外（既出）: ${previousT
         temperature: 0.5,
         search_recency_filter: recency,
         web_search_options: {
-          search_context_size: 'medium',
+          search_context_size: 'high',
           user_location: { country: 'JP' },
         },
         response_format: {
