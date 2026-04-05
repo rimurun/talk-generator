@@ -284,11 +284,11 @@ ${previousTitles && previousTitles.length > 0 ? `除外（既出）: ${previousT
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        max_tokens: 4000,
-        temperature: 0.7,
+        max_tokens: 3000,
+        temperature: 0.5,
         search_recency_filter: recency,
         web_search_options: {
-          search_context_size: 'high',
+          search_context_size: 'medium',
           user_location: { country: 'JP' },
         },
         response_format: {
@@ -298,7 +298,7 @@ ${previousTitles && previousTitles.length > 0 ? `除外（既出）: ${previousT
       };
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
 
       const response = await fetch(PERPLEXITY_ENDPOINT, {
         method: 'POST',
@@ -676,7 +676,7 @@ JSON形式で返答:
             { role: 'user', content: userPrompt },
           ],
           max_tokens: maxTokens,
-          temperature: 0.8,
+          temperature: 0.6,
         }),
       });
 
