@@ -165,7 +165,7 @@ export default function TopicCard({ topic, onClick, onTeleprompter }: TopicCardP
       tabIndex={0}
       role="button"
       aria-label={`${topic.title} - ${topic.category} - 台本を表示`}
-      className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 cursor-pointer transition-all duration-300 hover:bg-gray-700/60 hover:border-gray-600 hover:transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-blue-500/50 focus:bg-gray-700/60 group relative"
+      className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 cursor-pointer transition-all duration-300 hover:bg-gray-700/60 hover:border-gray-600 hover:transform hover:scale-[1.02] focus:outline-none focus:ring-4 focus:ring-blue-500/50 focus:bg-gray-700/60 group relative"
     >
       {/* コピーメッセージ */}
       {copyMessage && (
@@ -180,7 +180,7 @@ export default function TopicCard({ topic, onClick, onTeleprompter }: TopicCardP
           {topic.category}
         </span>
         
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+        <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
           {/* テレプロンプターボタン（台本生成済みのときのみ表示） */}
           {hasScript && onTeleprompter && (
             <button

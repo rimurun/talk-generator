@@ -194,3 +194,150 @@ CREATE POLICY "ratings_delete_own" ON script_ratings
 --   '*/15 * * * *',  -- 15分おき
 --   $$DELETE FROM generated_cache WHERE expires_at < now()$$
 -- );
+
+-- ==============================================
+-- 6. rate_limits テーブル（サーバーサイドレート制限）
+-- ==============================================
+CREATE TABLE IF NOT EXISTS rate_limits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  identifier TEXT NOT NULL,
+  path TEXT NOT NULL,
+  request_count INTEGER NOT NULL DEFAULT 1,
+  window_start TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  UNIQUE (identifier, path)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_limits_lookup
+  ON rate_limits (identifier, path, window_start);
+
+-- RLS: サーバーサイドのみアクセス
+ALTER TABLE rate_limits ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "rate_limits_all_anon" ON rate_limits
+  FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "rate_limits_all_authenticated" ON rate_limits
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ==============================================
+-- 7. guest_usage テーブル（ゲスト使用回数追跡）
+-- ==============================================
+CREATE TABLE IF NOT EXISTS guest_usage (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ip_hash TEXT NOT NULL,
+  usage_count INTEGER NOT NULL DEFAULT 0,
+  usage_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  last_used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  UNIQUE (ip_hash, usage_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_guest_usage_lookup
+  ON guest_usage (ip_hash, usage_date);
+
+ALTER TABLE guest_usage ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "guest_usage_all_anon" ON guest_usage
+  FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "guest_usage_all_authenticated" ON guest_usage
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ==============================================
+-- 8. cost_tracking テーブル（API コスト追跡）
+-- ==============================================
+CREATE TABLE IF NOT EXISTS cost_tracking (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  period_key TEXT NOT NULL,
+  period_type TEXT NOT NULL CHECK (period_type IN ('daily', 'monthly')),
+  total_cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  UNIQUE (period_key, period_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cost_tracking_lookup
+  ON cost_tracking (period_key, period_type);
+
+ALTER TABLE cost_tracking ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "cost_tracking_all_anon" ON cost_tracking
+  FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "cost_tracking_all_authenticated" ON cost_tracking
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ==============================================
+-- レート制限アトミックチェック RPC
+-- ==============================================
+CREATE OR REPLACE FUNCTION check_and_increment_rate_limit(
+  p_identifier TEXT,
+  p_path TEXT,
+  p_window_ms INTEGER,
+  p_max_requests INTEGER
+) RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_now TIMESTAMPTZ := now();
+  v_window_start TIMESTAMPTZ;
+  v_row rate_limits%ROWTYPE;
+  v_remaining INTEGER;
+BEGIN
+  v_window_start := v_now - make_interval(secs := p_window_ms / 1000.0);
+
+  -- 期限切れエントリを削除
+  DELETE FROM rate_limits
+  WHERE identifier = p_identifier AND path = p_path AND window_start <= v_window_start;
+
+  -- 既存ウィンドウを取得して更新
+  UPDATE rate_limits
+  SET request_count = request_count + 1
+  WHERE identifier = p_identifier AND path = p_path AND window_start > v_window_start
+  RETURNING * INTO v_row;
+
+  IF v_row IS NOT NULL THEN
+    IF v_row.request_count > p_max_requests THEN
+      -- 超過: カウントを戻す
+      UPDATE rate_limits SET request_count = request_count - 1 WHERE id = v_row.id;
+      RETURN json_build_object(
+        'allowed', false,
+        'remaining', 0,
+        'resetAt', extract(epoch from v_row.window_start + make_interval(secs := p_window_ms / 1000.0)) * 1000
+      );
+    ELSE
+      v_remaining := p_max_requests - v_row.request_count;
+      RETURN json_build_object(
+        'allowed', true,
+        'remaining', v_remaining,
+        'resetAt', extract(epoch from v_row.window_start + make_interval(secs := p_window_ms / 1000.0)) * 1000
+      );
+    END IF;
+  ELSE
+    -- 新規ウィンドウ作成
+    INSERT INTO rate_limits (identifier, path, request_count, window_start)
+    VALUES (p_identifier, p_path, 1, v_now)
+    ON CONFLICT (identifier, path)
+    DO UPDATE SET request_count = 1, window_start = v_now;
+
+    RETURN json_build_object(
+      'allowed', true,
+      'remaining', p_max_requests - 1,
+      'resetAt', extract(epoch from v_now + make_interval(secs := p_window_ms / 1000.0)) * 1000
+    );
+  END IF;
+END;
+$$;
+
+-- 古い rate_limits の定期クリーンアップ
+-- SELECT cron.schedule(
+--   'cleanup-expired-rate-limits',
+--   '*/5 * * * *',
+--   $$DELETE FROM rate_limits WHERE window_start < now() - INTERVAL '10 minutes'$$
+-- );
+
+-- 古い guest_usage の定期クリーンアップ
+-- SELECT cron.schedule(
+--   'cleanup-old-guest-usage',
+--   '0 0 * * *',
+--   $$DELETE FROM guest_usage WHERE usage_date < CURRENT_DATE - INTERVAL '7 days'$$
+-- );

@@ -53,8 +53,9 @@ export default function TopicList({ topics, filters, onTopicSelect, onBackToList
         <h2 className="text-2xl font-semibold text-white">
           生成されたトピック ({topics.length}件)
         </h2>
-        <div className="text-sm text-gray-400">
-          クリックして詳細な台本を表示
+        <div className="flex items-center gap-1.5 text-sm font-medium text-purple-300">
+          <span>台本を見るにはカードをクリック</span>
+          <span className="text-base">→</span>
         </div>
       </div>
       

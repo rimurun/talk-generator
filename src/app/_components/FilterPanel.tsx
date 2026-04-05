@@ -94,6 +94,10 @@ export default function FilterPanel({
   const filterOverlay = isFilterOpen && typeof document !== 'undefined' ? createPortal(
     <div
       ref={filterOverlayRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="フィルター設定"
+      className="animate-fade-in"
       style={{
         position: 'fixed',
         inset: 0,
@@ -103,7 +107,7 @@ export default function FilterPanel({
         WebkitOverflowScrolling: 'touch',
       }}
     >
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      <div className="max-w-2xl mx-auto px-4 py-6 animate-slide-up">
         {/* オーバーレイヘッダー */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="flex items-center gap-2 text-lg font-semibold text-white">
@@ -185,6 +189,7 @@ export default function FilterPanel({
                 <button
                   key={category.value}
                   onClick={() => onCategoryToggle(category.value)}
+                  aria-pressed={isSelected}
                   className={`relative py-3 px-3 min-h-[52px] rounded-xl border transition-all duration-200 touch-manipulation text-sm font-medium text-left overflow-hidden group ${
                     isSelected
                       ? `bg-gradient-to-br ${style.gradient} border-white/10 ${style.textClass}`

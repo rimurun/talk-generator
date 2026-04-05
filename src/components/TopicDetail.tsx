@@ -12,6 +12,7 @@ import TopicDetailHeader from './topic-detail/TopicDetailHeader';
 import ScriptActions from './topic-detail/ScriptActions';
 import ScriptContent from './topic-detail/ScriptContent';
 import { EditableScriptContent } from './topic-detail/types';
+import { getAuthHeaders } from '@/lib/api-helpers';
 
 const LoadingSpinner = dynamic(() => import('./LoadingSpinner'), {
   loading: () => <div className="animate-pulse bg-gray-700 h-8 w-8 rounded-full mx-auto"></div>
@@ -153,10 +154,12 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
       // スタイルプロファイルを取得してリクエストに含める
       const styleProfile = storage.getStyleProfile();
 
+      const scriptAuthHeaders = await getAuthHeaders();
       const response = await fetch('/api/script', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...scriptAuthHeaders,
         },
         body: JSON.stringify({
           topic: {
@@ -175,7 +178,10 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 403) {
+          throw new Error(errorData.error || 'ゲストの利用回数上限に達しました。ログインしてご利用ください。');
+        }
         throw new Error(errorData.error || 'サーバーエラーが発生しました');
       }
 
@@ -233,10 +239,12 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
       // スタイルプロファイルを取得してリクエストに含める
       const styleProfile = storage.getStyleProfile();
 
+      const scriptAuthHeaders = await getAuthHeaders();
       const response = await fetch('/api/script', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...scriptAuthHeaders,
         },
         body: JSON.stringify({
           topic: {
@@ -255,7 +263,10 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 403) {
+          throw new Error(errorData.error || 'ゲストの利用回数上限に達しました。ログインしてご利用ください。');
+        }
         throw new Error(errorData.error || 'サーバーエラーが発生しました');
       }
 
@@ -558,7 +569,12 @@ ${content.transition}
         )}
 
         {/* ローディング */}
-        {loading && <LoadingSpinner />}
+        {loading && (
+          <div className="text-center py-8">
+            <LoadingSpinner />
+            <p className="text-sm text-[var(--color-text-muted)] mt-3">台本を生成しています...</p>
+          </div>
+        )}
 
         {/* 台本表示 */}
         {script && !loading && displayContent && (

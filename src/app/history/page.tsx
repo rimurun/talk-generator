@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { storage, GenerationHistory } from '@/lib/storage';
 import { Clock, DollarSign, Zap, FileText, Trash2, Download } from 'lucide-react';
 
+// テンション値の日本語マッピング
+const tensionLabel: Record<string, string> = { low: '低', medium: '中', high: '高' };
+
 export default function HistoryPage() {
   const [history, setHistory] = useState<GenerationHistory[]>([]);
   const [filter, setFilter] = useState<'all' | 'topic' | 'script'>('all');
@@ -22,10 +25,9 @@ export default function HistoryPage() {
   };
 
   const clearHistory = () => {
-    if (confirm('生成履歴をすべて削除しますか？この操作は取り消せません。')) {
-      storage.clearHistory();
-      loadHistory();
-    }
+    if (!window.confirm('本当に削除しますか？この操作は取り消せません。')) return;
+    storage.clearHistory();
+    loadHistory();
   };
 
   const exportHistory = () => {
@@ -246,18 +248,18 @@ export default function HistoryPage() {
                   <div className="text-sm text-gray-300 space-y-1">
                     {item.type === 'topic' && item.filters && (
                       <div>
-                        フィルター: {item.filters.categories?.length > 0 
-                          ? item.filters.categories.join(', ') 
-                          : '全カテゴリ'}, 
-                        テンション: {item.filters.tension}, 
+                        フィルター: {item.filters.categories?.length > 0
+                          ? item.filters.categories.join(', ')
+                          : '全カテゴリ'},
+                        テンション: {tensionLabel[item.filters.tension] || item.filters.tension},
                         口調: {item.filters.tone}
                       </div>
                     )}
                     
                     {item.type === 'script' && item.scriptSettings && (
                       <div>
-                        設定: {item.scriptSettings.duration}秒, 
-                        テンション: {item.scriptSettings.tension}, 
+                        設定: {item.scriptSettings.duration}秒,
+                        テンション: {tensionLabel[item.scriptSettings.tension] || item.scriptSettings.tension},
                         口調: {item.scriptSettings.tone}
                       </div>
                     )}

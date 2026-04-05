@@ -23,19 +23,16 @@ export function middleware(request: NextRequest) {
     const origin = request.headers.get('origin');
     const host = request.headers.get('host');
 
-    // Originヘッダーが存在する場合、自サイトと一致するか確認
-    // null（同一オリジンのフォームやナビゲーション）は許可
-    if (origin !== null) {
-      const expectedOrigin = host
-        ? `${request.nextUrl.protocol}//${host}`.replace(/\/$/, '')
-        : null;
+    // Originヘッダーのチェック（null も拒否: sandbox iframe CSRF対策）
+    const expectedOrigin = host
+      ? `${request.nextUrl.protocol}//${host}`.replace(/\/$/, '')
+      : null;
 
-      if (!expectedOrigin || origin !== expectedOrigin) {
-        return NextResponse.json(
-          { error: '外部オリジンからのアクセスは許可されていません' },
-          { status: 403 }
-        );
-      }
+    if (!expectedOrigin || origin !== expectedOrigin) {
+      return NextResponse.json(
+        { error: '外部オリジンからのアクセスは許可されていません' },
+        { status: 403 }
+      );
     }
   }
 

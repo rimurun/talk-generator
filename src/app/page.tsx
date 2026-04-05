@@ -21,10 +21,6 @@ import FilterPanel from './_components/FilterPanel';
 import GenerateButton from './_components/GenerateButton';
 import TopicListSection from './_components/TopicListSection';
 
-// ゲスト利用回数管理のlocalStorageキー
-const GUEST_USAGE_KEY = 'talkgen_guest_usage_count';
-// ゲスト最大試用回数
-const GUEST_MAX_USAGE = 3;
 
 function HomeContent() {
   // 認証状態の確認（リダイレクトはしない）
@@ -32,8 +28,6 @@ function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // ゲスト利用回数の状態
-  const [guestUsageCount, setGuestUsageCount] = useState<number>(0);
   // ゲスト上限到達モーダルの表示フラグ
   const [showGuestLimitModal, setShowGuestLimitModal] = useState(false);
   // フィルターセクションの折りたたみ状態（全画面でデフォルト折りたたみ）
@@ -46,14 +40,6 @@ function HomeContent() {
 
   // 結果セクションへの参照（生成完了後に自動スクロール）
   const resultsRef = useRef<HTMLDivElement>(null);
-
-  // ゲスト利用回数をlocalStorageから読み込む
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const count = parseInt(localStorage.getItem(GUEST_USAGE_KEY) || '0', 10);
-      setGuestUsageCount(count);
-    }
-  }, []);
 
   // カスタムhookで状態管理を簡素化
   const {
@@ -177,25 +163,7 @@ function HomeContent() {
     }));
   };
 
-  // ゲスト利用回数を消費する（生成成功後に呼び出す）
-  const consumeGuestUsage = () => {
-    if (user) return;
-    const newCount = guestUsageCount + 1;
-    setGuestUsageCount(newCount);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(GUEST_USAGE_KEY, String(newCount));
-    }
-  };
-
   const handleGenerate = async () => {
-    // 未ログインの場合はゲスト利用回数をチェック
-    if (!user) {
-      if (guestUsageCount >= GUEST_MAX_USAGE) {
-        setShowGuestLimitModal(true);
-        return;
-      }
-    }
-
     if (batchMode) {
       // バッチ生成
       const categoriesToUse = filters.categories.length > 0
@@ -213,9 +181,6 @@ function HomeContent() {
       // 通常生成
       await generateTopics(filters);
     }
-
-    // 生成成功後にゲスト回数を消費（エラー時は消費しない）
-    consumeGuestUsage();
   };
 
   // レート制限アラート（1日100回制限）
@@ -224,9 +189,6 @@ function HomeContent() {
   const totalRequests = rateLimit.topicRequests + rateLimit.scriptRequests;
   const remainingRequests = Math.max(0, dailyLimit - totalRequests);
   const isNearLimit = remainingRequests <= 10;
-
-  // ゲストの残り試用回数
-  const guestRemaining = Math.max(0, GUEST_MAX_USAGE - guestUsageCount);
 
   // プログレス割合の算出（数値として返す）
   const getProgressPercent = (): number => {
@@ -249,7 +211,7 @@ function HomeContent() {
 
         {/* ゲストモードバナー（未ログイン時のみ表示） */}
         {!authLoading && !user && (
-          <GuestBanner guestRemaining={guestRemaining} />
+          <GuestBanner />
         )}
 
         {/* ステータスピル（API使用量・アラート） */}
@@ -316,6 +278,15 @@ function HomeContent() {
             <br className="hidden sm:block" />
             そのまま読める配信トーク台本を瞬時に生成
           </p>
+
+          {/* 2ステップフロー説明 */}
+          <div className="flex items-center justify-center gap-3 mt-4 text-xs text-[var(--color-text-muted)]">
+            <span className="px-2 py-1 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)]">1. トピック生成</span>
+            <span>→</span>
+            <span className="px-2 py-1 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)]">2. 台本作成</span>
+            <span>→</span>
+            <span className="px-2 py-1 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)]">3. 配信で使う</span>
+          </div>
 
           {/* チャンネル名表示 */}
           {profile?.channelName && (
@@ -393,26 +364,9 @@ function HomeContent() {
                   disabled={loading}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-600/70 hover:bg-red-600 disabled:opacity-50 text-white transition-colors focus:outline-none"
                 >
-                  同じ条件で再生成
+                  再試行
                 </button>
               )}
-
-              <button
-                onClick={() => {
-                  const history = storage.getHistory().filter(h => h.type === 'topic');
-                  if (history.length > 0 && lastFilters) {
-                    generateTopics(lastFilters);
-                    clearError();
-                  } else {
-                    generateTopics(filters);
-                    clearError();
-                  }
-                }}
-                disabled={loading}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium glass-card-light hover:text-white disabled:opacity-50 text-[var(--color-text-secondary)] transition-all focus:outline-none border border-[var(--color-border)]"
-              >
-                前回の条件で再生成
-              </button>
 
               <button
                 onClick={() => {
@@ -446,6 +400,15 @@ function HomeContent() {
               <Sparkles size={14} />
               再生成
             </button>
+          </div>
+        )}
+
+        {/* トピックが空・非ローディング・非エラー時の空状態表示 */}
+        {topics.length === 0 && !loading && !error && (
+          <div className="text-center py-16 text-[var(--color-text-muted)]">
+            <Sparkles size={40} className="mx-auto mb-4 opacity-30" />
+            <p className="text-lg mb-2">まだトピックがありません</p>
+            <p className="text-sm">上のボタンから生成してみましょう</p>
           </div>
         )}
 

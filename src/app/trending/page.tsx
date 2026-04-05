@@ -15,6 +15,7 @@ import {
   type TrendingCategory,
   type TrendingItem,
 } from '@/lib/parse-trending';
+import { getAuthHeaders } from '@/lib/api-helpers';
 
 // ============================================================
 // カテゴリ別スタイル定義（既存UIと統一）
@@ -531,6 +532,13 @@ export default function TrendingPage() {
   const [relativeTime, setRelativeTime] = useState<string>('');
   const [activeTab, setActiveTab] = useState<string>('全て');
   const [sources, setSources] = useState<Record<string, any> | null>(null);
+  const [lastRefreshTime, setLastRefreshTime] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      return parseInt(localStorage.getItem('talkgen_trending_last_refresh') || '0', 10);
+    }
+    return 0;
+  });
+  const [refreshCooldownRemaining, setRefreshCooldownRemaining] = useState<string>('');
 
   // キャッシュデータが存在するかを追跡
   const hasCachedData = useRef(false);
@@ -540,7 +548,8 @@ export default function TrendingPage() {
     if (!hasCachedData.current) setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/trending');
+      const trendAuthHeaders = await getAuthHeaders();
+      const res = await fetch('/api/trending', { headers: trendAuthHeaders });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -576,6 +585,23 @@ export default function TrendingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 更新ボタンのクールダウン残り時間を1秒ごとに更新
+  useEffect(() => {
+    const COOLDOWN_MS = 3600_000; // 1時間
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - lastRefreshTime;
+      if (elapsed < COOLDOWN_MS) {
+        const remaining = COOLDOWN_MS - elapsed;
+        const min = Math.floor(remaining / 60_000);
+        const sec = Math.floor((remaining % 60_000) / 1000);
+        setRefreshCooldownRemaining(`${min}分${sec}秒`);
+      } else {
+        setRefreshCooldownRemaining('');
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lastRefreshTime]);
+
   // 相対時間を1分ごとに更新
   useEffect(() => {
     if (!generatedAt) return;
@@ -584,6 +610,19 @@ export default function TrendingPage() {
     const timer = setInterval(update, 60000);
     return () => clearInterval(timer);
   }, [generatedAt]);
+
+  // 手動更新ボタン用ハンドラ（クールダウンチェックあり）
+  const handleManualRefresh = useCallback(async () => {
+    const COOLDOWN_MS = 3600_000;
+    if (Date.now() - lastRefreshTime < COOLDOWN_MS) {
+      setError('トレンドの更新は1時間に1回までです。');
+      return;
+    }
+    const now = Date.now();
+    setLastRefreshTime(now);
+    localStorage.setItem('talkgen_trending_last_refresh', String(now));
+    await fetchTrending();
+  }, [lastRefreshTime, fetchTrending]);
 
   // 台本生成ページへ遷移
   const handleGenerateScript = useCallback(
@@ -750,8 +789,8 @@ export default function TrendingPage() {
               </span>
             )}
             <button
-              onClick={fetchTrending}
-              disabled={loading}
+              onClick={handleManualRefresh}
+              disabled={!!refreshCooldownRemaining || loading}
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all duration-200 disabled:opacity-50"
               style={{
                 background: 'rgba(255,255,255,0.06)',
@@ -760,7 +799,11 @@ export default function TrendingPage() {
               }}
             >
               <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-              <span className="hidden sm:inline">更新</span>
+              {refreshCooldownRemaining ? (
+                <span className="text-xs">{refreshCooldownRemaining}</span>
+              ) : (
+                <span className="hidden sm:inline">更新</span>
+              )}
             </button>
           </div>
         </div>

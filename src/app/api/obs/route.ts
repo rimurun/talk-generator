@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+function sanitizeParam(value: string): string {
+  return value.replace(/[<>"'&;(){}]/g, '');
+}
+
 export async function GET(request: NextRequest) {
   const scriptId = request.nextUrl.searchParams.get('id');
-  const fontSize = request.nextUrl.searchParams.get('fs') || '24';
-  const color = request.nextUrl.searchParams.get('color') || 'white';
-  const bg = request.nextUrl.searchParams.get('bg') || 'transparent';
+  const fontSize = sanitizeParam(request.nextUrl.searchParams.get('fs') || '24');
+  const color = sanitizeParam(request.nextUrl.searchParams.get('color') || 'white');
+  const bg = sanitizeParam(request.nextUrl.searchParams.get('bg') || 'transparent');
   const scroll = request.nextUrl.searchParams.get('scroll') || 'false';
 
   // 未使用変数の lint 警告を回避（将来的にサーバーサイドでスクリプトを取得する際に使用予定）

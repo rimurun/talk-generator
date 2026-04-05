@@ -3,25 +3,28 @@ import { generateTopicsWithWebSearch } from '@/lib/openai-responses';
 import { BatchGenerationRequest, BatchGenerationResponse } from '@/types';
 import { memoryCache, createBatchCacheKey } from '@/lib/cache';
 import { checkRateLimit } from '@/lib/server-rate-limit';
+import { authenticateRequest } from '@/lib/auth';
+import { checkAndIncrementGuestUsage } from '@/lib/guest-limit';
+import { checkCostLimit, recordCost } from '@/lib/cost-control';
 
 
 export async function POST(request: NextRequest) {
+  // 認証チェック
+  const auth = await authenticateRequest(request);
+
   // レート制限チェック
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    || request.headers.get('x-real-ip')
-    || 'unknown';
-  const rateCheck = checkRateLimit(ip, '/api/batch');
+  const rateCheck = await checkRateLimit(auth.identifier, '/api/batch', auth.isGuest);
   if (!rateCheck.allowed) {
     return NextResponse.json(
       { error: 'リクエスト制限を超えました。しばらくお待ちください。' },
-      {
-        status: 429,
-        headers: {
-          'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)),
-          'X-RateLimit-Remaining': String(rateCheck.remaining),
-        },
-      }
+      { status: 429, headers: { 'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)), 'X-RateLimit-Remaining': String(rateCheck.remaining) } }
     );
+  }
+
+  // コスト上限チェック
+  const costCheck = await checkCostLimit();
+  if (!costCheck.allowed) {
+    return NextResponse.json({ error: costCheck.reason || 'API使用量が上限に達しました。' }, { status: 429 });
   }
 
   try {
@@ -39,6 +42,17 @@ export async function POST(request: NextRequest) {
         { error: '生成件数は1-20件の範囲で指定してください' },
         { status: 400 }
       );
+    }
+
+    // ゲスト使用回数のアトミックチェック+消費
+    if (auth.isGuest) {
+      const guestCheck = await checkAndIncrementGuestUsage(auth.ip);
+      if (!guestCheck.allowed) {
+        return NextResponse.json(
+          { error: 'ゲストの利用回数上限に達しました。ログインしてご利用ください。', guestLimitReached: true },
+          { status: 403 }
+        );
+      }
     }
 
     // バッチキャッシュチェック（インメモリ → DB フォールバック）
@@ -126,6 +140,10 @@ export async function POST(request: NextRequest) {
         cacheHitRate: body.categories.length > 0 ? (cacheHits / body.categories.length) * 100 : 0
       }
     };
+
+    if (totalCost > 0) {
+      recordCost(totalCost).catch(err => console.error('コスト記録エラー:', err));
+    }
 
     memoryCache.setBatch(batchCacheKey, response);
     return NextResponse.json(response);

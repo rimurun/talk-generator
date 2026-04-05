@@ -1,57 +1,39 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Zap, LayoutGrid, FileText, Monitor, Radio, X } from 'lucide-react';
+import { Zap, LayoutGrid, FileText, Bookmark, X } from 'lucide-react';
 
 // オンボーディング完了フラグのlocalStorageキー
 const ONBOARDING_KEY = 'talkgen_onboarding_complete';
 
-// ステップ定義
+// ステップ定義（初回ユーザー向けに3ステップに絞る）
 const STEPS = [
   {
     icon: Zap,
     title: 'ようこそ TalkGen へ！',
     description:
-      'TalkGen は配信者向けのAI台本生成ツールです。最新トレンドを自動で収集し、そのまま読めるトーク台本に変換します。約1分で使い方を説明します。',
+      'TalkGen は配信者向けのAI台本生成ツールです。最新トレンドを自動で収集し、そのまま読めるトーク台本に変換します。',
     color: 'text-blue-400',
     bg: 'bg-blue-500/10',
     border: 'border-blue-500/30',
   },
   {
     icon: LayoutGrid,
-    title: 'カテゴリを選んで',
+    title: 'カテゴリを選んで台本を生成',
     description:
-      'ニュース・エンタメ・SNS・TikTok・海外おもしろなど、話したいジャンルを選べます。カテゴリボタンをクリックすると、期間・地域・サブカテゴリを詳細設定できます。',
+      'ニュース・エンタメ・SNS・TikTokなど、話したいジャンルを選択します。「トーク台本を生成」ボタンを押すとAIが最新情報をWeb検索し、配信でそのまま読めるスクリプトを自動作成します。',
     color: 'text-purple-400',
     bg: 'bg-purple-500/10',
     border: 'border-purple-500/30',
   },
   {
-    icon: FileText,
-    title: '台本を生成',
+    icon: Bookmark,
+    title: 'お気に入り・履歴で管理',
     description:
-      '「トーク台本を生成」ボタンを押すとAIが最新情報をWeb検索し、配信でそのまま読めるスクリプトを自動作成します。1日100回まで生成可能です。',
+      '生成した台本はお気に入り登録でいつでも呼び出せます。履歴から過去の台本を確認・再利用することも可能です。',
     color: 'text-green-400',
     bg: 'bg-green-500/10',
     border: 'border-green-500/30',
-  },
-  {
-    icon: Monitor,
-    title: 'テレプロンプターで読む',
-    description:
-      '生成した台本は「テレプロンプター」モードで表示できます。スクロール速度を調整しながら、カメラを見たまま読み上げられます。配信中のカンペとして活用できます。',
-    color: 'text-cyan-400',
-    bg: 'bg-cyan-500/10',
-    border: 'border-cyan-500/30',
-  },
-  {
-    icon: Radio,
-    title: 'OBSに連携',
-    description:
-      'OBS Studioのブラウザソースに登録すると、台本をオーバーレイとして配信画面に表示できます。視聴者には見えないレイヤーとして設定することも可能です。',
-    color: 'text-orange-400',
-    bg: 'bg-orange-500/10',
-    border: 'border-orange-500/30',
   },
 ];
 
@@ -98,15 +80,14 @@ export default function OnboardingOverlay() {
   const isLast = step === STEPS.length - 1;
 
   return (
-    // 背景オーバーレイ
+    // 背景オーバーレイ（クリックしても完了扱いにしない）
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm"
-      onClick={handleSkip}
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm animate-fade-in"
     >
-      {/* ステップカード（クリックイベントを止める） */}
+      {/* ステップカード */}
       <div
-        className={`relative bg-gray-800 border ${current.border} rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl`}
-        onClick={e => e.stopPropagation()}
+        key={step}
+        className={`relative bg-gray-800 border ${current.border} rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl animate-scale-in`}
       >
         {/* スキップボタン（右上） */}
         <button

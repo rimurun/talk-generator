@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/server-rate-limit';
+import { authenticateRequest } from '@/lib/auth';
 import { fetchYahooNewsRss } from '@/lib/rss-feeds';
 import { fetchGoogleTrends } from '@/lib/google-trends';
 import { fetchWikipediaTrends } from '@/lib/wikipedia-trends';
@@ -16,11 +17,9 @@ let trendingCache: { data: any; timestamp: number } | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
 export async function GET(request: NextRequest) {
-  // レート制限
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    || request.headers.get('x-real-ip')
-    || 'unknown';
-  const rateCheck = checkRateLimit(ip, '/api/trending');
+  // 認証 + レート制限
+  const auth = await authenticateRequest(request);
+  const rateCheck = await checkRateLimit(auth.identifier, '/api/trending', auth.isGuest);
   if (!rateCheck.allowed) {
     return NextResponse.json(
       { error: 'リクエスト制限を超えました。しばらくお待ちください。' },

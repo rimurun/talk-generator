@@ -1,76 +1,102 @@
-// サーバーサイドのインメモリレート制限
-// Vercelサーバーレス環境で動作（Edge Runtimeは非対応）
+// サーバーサイドのレート制限（Supabase永続化）
+// Vercelサーバーレス環境でインスタンス間で共有される
+
+import { getSupabaseServer } from './supabase';
 
 // パスごとのレート制限設定
-export const RATE_LIMITS: Record<string, { windowMs: number; maxRequests: number }> = {
-  '/api/topics':   { windowMs: 60_000, maxRequests: 10 },  // 1分10回
-  '/api/script':   { windowMs: 60_000, maxRequests: 10 },  // 1分10回
-  '/api/batch':    { windowMs: 60_000, maxRequests: 3 },   // 1分3回
-  '/api/trending': { windowMs: 60_000, maxRequests: 20 },  // 1分20回
+// ゲストは認証済みユーザーの半分の回数に制限
+export const RATE_LIMITS: Record<string, { windowMs: number; maxRequests: number; guestMaxRequests: number }> = {
+  '/api/topics':   { windowMs: 60_000, maxRequests: 10, guestMaxRequests: 5 },
+  '/api/script':   { windowMs: 60_000, maxRequests: 10, guestMaxRequests: 5 },
+  '/api/batch':    { windowMs: 60_000, maxRequests: 3,  guestMaxRequests: 1 },
+  '/api/trending': { windowMs: 3_600_000, maxRequests: 6, guestMaxRequests: 2 },
 };
 
-// リクエスト追跡用ストア: key = "{ip}:{path}"
-const store = new Map<string, { count: number; resetAt: number }>();
-
-// 古いエントリのクリーンアップ（Mapサイズが1000超えたら期限切れ順に削除）
-function cleanup(): void {
-  if (store.size < 1000) return;
-
-  const now = Date.now();
-  // 期限切れエントリを先に削除
-  for (const [key, entry] of store) {
-    if (entry.resetAt <= now) {
-      store.delete(key);
-    }
-  }
-
-  // それでも1000超えなら古い順（resetAt昇順）に削除して800件まで絞る
-  if (store.size >= 1000) {
-    const sorted = [...store.entries()].sort((a, b) => a[1].resetAt - b[1].resetAt);
-    const deleteCount = store.size - 800;
-    for (let i = 0; i < deleteCount; i++) {
-      store.delete(sorted[i][0]);
-    }
-  }
-}
+// インメモリフォールバック（Supabase未設定時 or エラー時）
+const fallbackStore = new Map<string, { count: number; resetAt: number }>();
 
 /**
- * レート制限チェック
- * @param ip      クライアントIPアドレス
- * @param path    APIパス（例: '/api/topics'）
- * @returns allowed: 許可/拒否、remaining: 残リクエスト数、resetAt: リセット時刻(ms)
+ * レート制限チェック（Supabase永続化）
+ * @param identifier ユーザーID または IPハッシュ
+ * @param path       APIパス（例: '/api/topics'）
+ * @param isGuest    ゲストかどうか（ゲストは制限が厳しい）
  */
-export function checkRateLimit(
-  ip: string,
-  path: string
-): { allowed: boolean; remaining: number; resetAt: number } {
+export async function checkRateLimit(
+  identifier: string,
+  path: string,
+  isGuest: boolean = false
+): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
   const limit = RATE_LIMITS[path];
-
-  // 設定のないパスは無制限で許可
   if (!limit) {
     return { allowed: true, remaining: 999, resetAt: Date.now() + 60_000 };
   }
 
-  cleanup();
+  const maxRequests = isGuest ? limit.guestMaxRequests : limit.maxRequests;
+  const supabase = getSupabaseServer();
 
-  const key = `${ip}:${path}`;
-  const now = Date.now();
-  const entry = store.get(key);
-
-  // ウィンドウが未作成 or リセット済みの場合は新規エントリを作成
-  if (!entry || entry.resetAt <= now) {
-    const resetAt = now + limit.windowMs;
-    store.set(key, { count: 1, resetAt });
-    return { allowed: true, remaining: limit.maxRequests - 1, resetAt };
+  // Supabase未設定時はインメモリフォールバック
+  if (!supabase) {
+    return checkRateLimitFallback(identifier, path, limit.windowMs, maxRequests);
   }
 
-  // ウィンドウ内で上限超過
-  if (entry.count >= limit.maxRequests) {
+  try {
+    const { data, error } = await supabase.rpc('check_and_increment_rate_limit', {
+      p_identifier: identifier,
+      p_path: path,
+      p_window_ms: limit.windowMs,
+      p_max_requests: maxRequests,
+    });
+
+    if (error) {
+      console.error('レート制限RPCエラー:', error);
+      return checkRateLimitFallback(identifier, path, limit.windowMs, maxRequests);
+    }
+
+    // RPCはJSON型で返すためパース不要
+    const result = typeof data === 'string' ? JSON.parse(data) : data;
+
+    return {
+      allowed: result.allowed,
+      remaining: result.remaining,
+      resetAt: Math.round(result.resetAt),
+    };
+  } catch (err) {
+    console.error('レート制限チェックエラー:', err);
+    return checkRateLimitFallback(identifier, path, limit.windowMs, maxRequests);
+  }
+}
+
+/**
+ * インメモリフォールバック
+ */
+function checkRateLimitFallback(
+  identifier: string,
+  path: string,
+  windowMs: number,
+  maxRequests: number
+): { allowed: boolean; remaining: number; resetAt: number } {
+  // 古いエントリを定期的にクリーンアップ
+  if (fallbackStore.size > 500) {
+    const now = Date.now();
+    for (const [key, entry] of fallbackStore) {
+      if (entry.resetAt <= now) fallbackStore.delete(key);
+    }
+  }
+
+  const key = `${identifier}:${path}`;
+  const now = Date.now();
+  const entry = fallbackStore.get(key);
+
+  if (!entry || entry.resetAt <= now) {
+    const resetAt = now + windowMs;
+    fallbackStore.set(key, { count: 1, resetAt });
+    return { allowed: true, remaining: maxRequests - 1, resetAt };
+  }
+
+  if (entry.count >= maxRequests) {
     return { allowed: false, remaining: 0, resetAt: entry.resetAt };
   }
 
-  // カウントアップして許可
   entry.count += 1;
-  const remaining = limit.maxRequests - entry.count;
-  return { allowed: true, remaining, resetAt: entry.resetAt };
+  return { allowed: true, remaining: maxRequests - entry.count, resetAt: entry.resetAt };
 }

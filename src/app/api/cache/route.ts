@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { memoryCache } from '@/lib/cache';
+import { authenticateRequest } from '@/lib/auth';
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
+  const auth = await authenticateRequest(request);
+  if (auth.isGuest) {
+    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+  }
+
   try {
     // キャッシュクリア実行（インメモリ + DB 両方）
     memoryCache.clear();

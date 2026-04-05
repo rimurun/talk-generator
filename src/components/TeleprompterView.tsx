@@ -375,8 +375,8 @@ export default function TeleprompterView({ script, topic, onExit }: Teleprompter
         `}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 上段: コントロール */}
-        <div className="flex items-center gap-3 mb-2">
+        {/* 上段1行目: メインコントロール（再生・速度） */}
+        <div className="flex items-center gap-2 mb-1.5">
           {/* 再生/停止ボタン */}
           <button
             onClick={togglePlay}
@@ -397,7 +397,7 @@ export default function TeleprompterView({ script, topic, onExit }: Teleprompter
             value={speed}
             onChange={(e) => handleSpeedChange(Number(e.target.value))}
             aria-label="スクロール速度"
-            className="flex-1 max-w-36 h-1.5 rounded-full accent-cyan-400 cursor-pointer"
+            className="flex-1 min-w-0 h-1.5 rounded-full accent-cyan-400 cursor-pointer"
           />
 
           <span className="text-cyan-400 text-sm font-mono w-4">{speed}</span>
@@ -420,9 +420,61 @@ export default function TeleprompterView({ script, topic, onExit }: Teleprompter
             </button>
           </div>
 
-          {/* セパレータ */}
-          <div className="w-px h-6 bg-gray-700 mx-1" />
+          {/* セパレータ（md以上のみ表示） */}
+          <div className="hidden md:block w-px h-6 bg-gray-700 mx-1" />
 
+          {/* フォントサイズ・ミラー・閉じる（md以上のみ1行目に表示） */}
+          <div className="hidden md:flex items-center gap-2">
+            {/* フォントサイズ縮小 */}
+            <button
+              onClick={decreaseFontSize}
+              disabled={fontSizeIndex === 0}
+              aria-label="文字を小さく"
+              className="text-gray-300 hover:text-white disabled:opacity-30 transition-colors px-2 py-1 rounded text-sm font-bold"
+            >
+              A-
+            </button>
+
+            {/* フォントサイズ拡大 */}
+            <button
+              onClick={increaseFontSize}
+              disabled={fontSizeIndex === FONT_SIZES.length - 1}
+              aria-label="文字を大きく"
+              className="text-gray-300 hover:text-white disabled:opacity-30 transition-colors px-2 py-1 rounded text-lg font-bold"
+            >
+              A+
+            </button>
+
+            {/* セパレータ */}
+            <div className="w-px h-6 bg-gray-700 mx-1" />
+
+            {/* ミラーモード */}
+            <button
+              onClick={() => setIsMirror((m) => !m)}
+              aria-label="ミラーモード切替"
+              aria-pressed={isMirror}
+              className={`p-2 rounded-lg transition-colors ${
+                isMirror
+                  ? 'bg-cyan-600/40 text-cyan-300'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+              }`}
+            >
+              <FlipHorizontal size={18} />
+            </button>
+
+            {/* 閉じるボタン */}
+            <button
+              onClick={onExit}
+              aria-label="テレプロンプターを閉じる"
+              className="ml-2 p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* モバイルのみ: サブコントロール2行目（フォントサイズ・ミラー・閉じる） */}
+        <div className="flex md:hidden items-center gap-2 mb-1.5">
           {/* フォントサイズ縮小 */}
           <button
             onClick={decreaseFontSize}

@@ -2,26 +2,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateScriptWithCache } from '@/lib/openai-responses';
 import { GenerateScriptRequest } from '@/types';
 import { checkRateLimit } from '@/lib/server-rate-limit';
+import { authenticateRequest } from '@/lib/auth';
+import { checkAndIncrementGuestUsage } from '@/lib/guest-limit';
+import { checkCostLimit, recordCost } from '@/lib/cost-control';
 
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
+  // 認証チェック
+  const auth = await authenticateRequest(request);
+
   // レート制限チェック
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    || request.headers.get('x-real-ip')
-    || 'unknown';
-  const rateCheck = checkRateLimit(ip, '/api/script');
+  const rateCheck = await checkRateLimit(auth.identifier, '/api/script', auth.isGuest);
   if (!rateCheck.allowed) {
     return NextResponse.json(
       { error: 'リクエスト制限を超えました。しばらくお待ちください。' },
-      {
-        status: 429,
-        headers: {
-          'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)),
-          'X-RateLimit-Remaining': String(rateCheck.remaining),
-        },
-      }
+      { status: 429, headers: { 'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)), 'X-RateLimit-Remaining': String(rateCheck.remaining) } }
     );
+  }
+
+  // コスト上限チェック
+  const costCheck = await checkCostLimit();
+  if (!costCheck.allowed) {
+    return NextResponse.json({ error: costCheck.reason || 'API使用量が上限に達しました。' }, { status: 429 });
   }
 
   let body: GenerateScriptRequest & { styleProfile?: string };
@@ -65,6 +68,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ゲスト使用回数のアトミックチェック+消費
+    if (auth.isGuest) {
+      const guestCheck = await checkAndIncrementGuestUsage(auth.ip);
+      if (!guestCheck.allowed) {
+        return NextResponse.json(
+          { error: 'ゲストの利用回数上限に達しました。ログインしてご利用ください。', guestLimitReached: true },
+          { status: 403 }
+        );
+      }
+    }
+
     // トピック情報の構築（topicId単体の場合はフォールバック）
     const topic = body.topic || {
       id: body.topicId || `fallback-${Date.now()}`,
@@ -83,6 +97,10 @@ export async function POST(request: NextRequest) {
       body.tone,
       body.styleProfile || undefined
     );
+
+    if (result.cost > 0) {
+      recordCost(result.cost).catch(err => console.error('コスト記録エラー:', err));
+    }
 
     return NextResponse.json({
       script: result.script,

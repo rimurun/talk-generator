@@ -83,7 +83,7 @@ const FAQ_ITEMS = [
   {
     question: '生成した台本の著作権はどうなりますか？',
     answer:
-      '生成した台本はすべてご主人様に帰属します。商用配信・販売・二次利用も自由です。',
+      '生成した台本はすべてお客様に帰属します。商用配信・販売・二次利用も自由です。',
   },
 ];
 
@@ -230,7 +230,7 @@ export default function PricingPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-16">
         {[
           { icon: Shield,   label: 'セキュア',     desc: 'データ暗号化対応' },
-          { icon: Cpu,      label: 'AI最適化',     desc: 'GPT-4o 搭載' },
+          { icon: Cpu,      label: 'AI最適化',     desc: '最新AI搭載' },
           { icon: Monitor,  label: 'テレプロンプター', desc: 'OBS連携対応' },
           { icon: BarChart2, label: '分析機能',    desc: '配信データを可視化' },
         ].map(({ icon: Icon, label, desc }) => (

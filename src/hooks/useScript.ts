@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Script, FilterOptions, GenerateScriptResponse } from '@/types';
 import { API_CONFIG, UI_CONFIG } from '@/lib/config';
+import { getAuthHeaders } from '@/lib/api-helpers';
 
 interface UseScriptReturn {
   script: Script | null;
@@ -33,10 +34,12 @@ export function useScript(): UseScriptReturn {
     setError(null);
 
     try {
+      const authHeaders = await getAuthHeaders();
       const response = await fetch(API_CONFIG.ENDPOINTS.SCRIPT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders,
         },
         body: JSON.stringify({
           topicId,
@@ -47,7 +50,10 @@ export function useScript(): UseScriptReturn {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 403) {
+          throw new Error(errorData.error || 'ゲストの利用回数上限に達しました。ログインしてご利用ください。');
+        }
         throw new Error(errorData.error || 'サーバーエラーが発生しました');
       }
 

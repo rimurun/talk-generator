@@ -234,7 +234,7 @@ export default function LoginPage() {
               <FeatureCard
                 icon={<Sparkles size={20} className="text-blue-400" />}
                 title="AIトーク生成"
-                description="Claude AIがトレンドに合わせた台本を数秒で生成"
+                description="AIがトレンドに合わせた台本を数秒で生成"
                 delay="0s"
               />
               <FeatureCard
@@ -392,10 +392,10 @@ export default function LoginPage() {
                   window.dispatchEvent(new Event('talkgen_guest_change'));
                   router.push('/');
                 }}
-                className="flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm text-gray-400 hover:text-white transition-all duration-200 cursor-pointer"
+                className="block w-full text-center py-3 rounded-xl border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-white hover:border-purple-500/50 transition-all text-base font-medium cursor-pointer"
                 style={{
-                  background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.07)',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.18)',
                 }}
               >
                 <ArrowLeft size={14} />

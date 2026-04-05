@@ -5,6 +5,7 @@ import { storage, UserProfile } from '@/lib/storage';
 import { tonePresets } from '@/lib/mock-data';
 import { useAuth } from '@/components/AuthProvider';
 import { getSupabaseClient } from '@/lib/supabase';
+import { getAuthHeaders } from '@/lib/api-helpers';
 
 export default function SettingsPage() {
   const { user, isConfigured } = useAuth();
@@ -48,7 +49,8 @@ export default function SettingsPage() {
       }
 
       // API使用量読み込み（履歴ベース計算に統一）
-      const usageRes = await fetch('/api/usage');
+      const settingsAuthHeaders = await getAuthHeaders();
+      const usageRes = await fetch('/api/usage', { headers: settingsAuthHeaders });
       if (usageRes.ok) {
         const usageData = await usageRes.json();
         
@@ -67,7 +69,8 @@ export default function SettingsPage() {
       }
 
       // キャッシュ統計読み込み
-      const cacheRes = await fetch('/api/cache');
+      const cacheAuthHeaders = await getAuthHeaders();
+      const cacheRes = await fetch('/api/cache', { headers: cacheAuthHeaders });
       if (cacheRes.ok) {
         const cacheData = await cacheRes.json();
         setCacheStats(cacheData);
@@ -172,7 +175,8 @@ export default function SettingsPage() {
   const clearCache = async () => {
     try {
       // サーバー側キャッシュクリア
-      const response = await fetch('/api/cache', { method: 'DELETE' });
+      const clearCacheHeaders = await getAuthHeaders();
+      const response = await fetch('/api/cache', { method: 'DELETE', headers: clearCacheHeaders });
       // クライアント側もクリア（レート制限、前回タイトル、履歴）
       localStorage.removeItem('talk-generator-ratelimit');
       localStorage.removeItem('talk-generator-previous-titles');
@@ -394,6 +398,7 @@ export default function SettingsPage() {
                 {word}
                 <button
                   onClick={() => removeNgWord(word)}
+                  aria-label={`${word} を削除`}
                   className="hover:bg-red-700 rounded-full w-4 h-4 flex items-center justify-center text-xs"
                 >
                   ×
@@ -615,7 +620,12 @@ export default function SettingsPage() {
               設定をエクスポート
             </button>
             
-            <label className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors cursor-pointer flex items-center justify-center">
+            <label
+              role="button"
+              tabIndex={0}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); (e.currentTarget.querySelector('input') as HTMLInputElement)?.click(); } }}
+            >
               <span>設定をインポート</span>
               <input
                 type="file"
@@ -627,11 +637,10 @@ export default function SettingsPage() {
             
             <button
               onClick={() => {
-                if (confirm('全ての設定データを削除しますか？この操作は取り消せません。')) {
-                  storage.clearAllData();
-                  loadData();
-                  setMessage('全データをクリアしました');
-                }
+                if (!window.confirm('本当に削除しますか？この操作は取り消せません。')) return;
+                storage.clearAllData();
+                loadData();
+                setMessage('全データをクリアしました');
               }}
               className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
             >

@@ -237,7 +237,7 @@ export default function FavoritesPage() {
                     <Copy size={16} />
                   </button>
                   <button
-                    onClick={() => window.open(`/?topic=${item.topicId}`, '_blank')}
+                    onClick={() => window.open(`/?keyword=${encodeURIComponent(item.title)}`, '_blank')}
                     className="text-gray-400 hover:text-white transition-colors p-1"
                     title="元のページを開く"
                   >

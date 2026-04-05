@@ -2,6 +2,8 @@
 import { Topic, FilterOptions, UsageStats } from '@/types';
 import { storage } from '@/lib/storage';
 import { getRateLimit as getDailyLimit } from '@/lib/rate-limit';
+import { getAuthHeaders } from '@/lib/api-helpers';
+import { useAuth } from '@/components/AuthProvider';
 
 interface UseTopicsReturn {
   topics: Topic[];
@@ -18,6 +20,8 @@ interface UseTopicsReturn {
 }
 
 export function useTopics(): UseTopicsReturn {
+  const { user } = useAuth();
+
   const [topics, setTopics] = useState<Topic[]>(() => {
     // ページ遷移・リロード時に前回の生成結果を復元
     return storage.getLastTopics();
@@ -40,7 +44,8 @@ export function useTopics(): UseTopicsReturn {
   // 使用量を更新
   const updateUsage = async () => {
     try {
-      const response = await fetch('/api/usage');
+      const usageAuthHeaders = await getAuthHeaders();
+      const response = await fetch('/api/usage', { headers: usageAuthHeaders });
       if (response.ok) {
         const usageData = await response.json();
         setUsage(usageData);
@@ -80,14 +85,18 @@ export function useTopics(): UseTopicsReturn {
   const generateTopicsStreaming = async (filters: FilterOptions) => {
     const previousTitles = storage.getPreviousTopicTitles();
 
+    const streamAuthHeaders = await getAuthHeaders();
     const response = await fetch('/api/topics', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...streamAuthHeaders },
       body: JSON.stringify({ filters, previousTitles, stream: true }),
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'トピック生成に失敗しました' }));
+      if (response.status === 403) {
+        throw new Error(errorData.error || 'ゲストの利用回数上限に達しました。ログインしてご利用ください。');
+      }
       throw new Error(errorData.error || 'トピック生成に失敗しました');
     }
 
@@ -182,20 +191,28 @@ export function useTopics(): UseTopicsReturn {
 
     } catch (error) {
       console.error('トピック生成エラー:', error);
-      // ストリーミング失敗時は非ストリーミングにフォールバック
+      // ゲストはフォールバックしない（使用回数の二重消費防止）
+      if (!user) {
+        setError(error instanceof Error ? error.message : 'トピック生成中にエラーが発生しました');
+        return;
+      }
+      // 認証済みユーザーのみフォールバック
       try {
         setProgressStep('再試行中...');
         const previousTitles = storage.getPreviousTopicTitles();
+        const fallbackAuthHeaders = await getAuthHeaders();
         const response = await fetch('/api/topics', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...fallbackAuthHeaders },
           body: JSON.stringify({ filters, previousTitles }),
         });
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
           let errorMessage = errorData.error || 'トピック生成に失敗しました';
-          if (response.status === 429) {
+          if (response.status === 403) {
+            errorMessage = errorData.error || 'ゲストの利用回数上限に達しました。ログインしてご利用ください。';
+          } else if (response.status === 429) {
             errorMessage = 'API制限に達しました。少し時間をおいてから再試行してください';
           } else if (response.status >= 500) {
             errorMessage = 'サーバーエラーが発生しました。しばらく後に再試行してください';
@@ -235,7 +252,7 @@ export function useTopics(): UseTopicsReturn {
       setProgressStep(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user]);
 
   // バッチ生成
   const batchGenerate = useCallback(async (
@@ -264,10 +281,12 @@ export function useTopics(): UseTopicsReturn {
       const progressTimer = setTimeout(() => setProgressStep(`${count}件のトピック分析中...`), 3000);
       const progressTimer2 = setTimeout(() => setProgressStep('AI一括処理中...'), 8000);
 
+      const batchAuthHeaders = await getAuthHeaders();
       const response = await fetch('/api/batch', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...batchAuthHeaders,
         },
         body: JSON.stringify({
           categories,
@@ -284,9 +303,11 @@ export function useTopics(): UseTopicsReturn {
       if (!response.ok) {
         const errorData = await response.json();
         let errorMessage = errorData.error || 'バッチ生成に失敗しました';
-        
+
         // エラーメッセージを分かりやすく変換
-        if (response.status === 429) {
+        if (response.status === 403) {
+          errorMessage = errorData.error || 'ゲストの利用回数上限に達しました。ログインしてご利用ください。';
+        } else if (response.status === 429) {
           errorMessage = 'API制限に達しました。少し時間をおいてから再試行してください';
         } else if (response.status >= 500) {
           errorMessage = 'ネットワークエラー：サーバーに問題が発生している可能性があります';

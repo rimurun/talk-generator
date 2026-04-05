@@ -6,6 +6,25 @@ import { useAuth } from './AuthProvider';
 import Navigation from './Navigation';
 import PageTransition from './PageTransition';
 
+// localStorageからサイドバーのコンパクトモードを同期的に読み取る（SSRでは false）
+function getNavCompact(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem('talkgen_nav_compact') === 'true';
+}
+
+// useSyncExternalStore用のsubscribe（talkgen_nav_compact_changeイベントで更新検知）
+function subscribeNavCompact(callback: () => void) {
+  window.addEventListener('talkgen_nav_compact_change', callback);
+  const handler = (e: StorageEvent) => {
+    if (e.key === 'talkgen_nav_compact') callback();
+  };
+  window.addEventListener('storage', handler);
+  return () => {
+    window.removeEventListener('talkgen_nav_compact_change', callback);
+    window.removeEventListener('storage', handler);
+  };
+}
+
 // 認証不要のパス
 const PUBLIC_PATHS = ['/login', '/pricing'];
 
@@ -38,6 +57,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // ゲストモードを同期的に読み取り（useEffect遅延なし）
   const guestMode = useSyncExternalStore(subscribeGuestMode, getGuestMode, () => false);
 
+  // サイドバーのコンパクト状態を同期的に読み取り
+  const navCompact = useSyncExternalStore(subscribeNavCompact, getNavCompact, () => false);
+
   const isPublicPage = PUBLIC_PATHS.includes(pathname);
   const authResolved = !loading;
 
@@ -67,9 +89,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {showNav && <Navigation />}
 
       <main className={`
+        transition-[margin] duration-300 ease-in-out
         ${showNav
           ? [
-              'lg:ml-60',
+              navCompact ? 'lg:ml-16' : 'lg:ml-60',
               'pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0',
             ].join(' ')
           : ''

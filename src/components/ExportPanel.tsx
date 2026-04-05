@@ -267,7 +267,7 @@ ${c.transition || ''}
       {/* スライドインパネル */}
       <div
         ref={modalRef}
-        className={`fixed top-0 right-0 h-full w-96 bg-gray-900 border-l border-gray-700 z-50 flex flex-col shadow-2xl transform transition-transform duration-300 ${
+        className={`fixed top-0 right-0 h-full w-[calc(100vw-2rem)] max-w-96 bg-[var(--color-bg)] border-l border-[var(--color-border)] z-50 flex flex-col shadow-2xl transform transition-transform duration-300 ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         role="dialog"
@@ -275,12 +275,12 @@ ${c.transition || ''}
         aria-modal="true"
       >
         {/* ヘッダー */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700 shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)] shrink-0">
           <h2 className="text-lg font-semibold text-white">エクスポート</h2>
           <button
             onClick={onClose}
             aria-label="パネルを閉じる"
-            className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-white hover:bg-[var(--color-surface)] transition-colors"
           >
             <X size={20} />
           </button>
@@ -293,19 +293,19 @@ ${c.transition || ''}
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Copy size={16} className="text-blue-400" />
-              <h3 className="text-sm font-semibold text-gray-200 uppercase tracking-wider">クリップボード</h3>
+              <h3 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">クリップボード</h3>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => copyToClipboard(formatAsPlainText(), 'text')}
-                className="flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg text-sm transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] text-white px-3 py-2 rounded-lg text-sm transition-colors"
               >
                 {copySuccess === 'text' ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
                 {copySuccess === 'text' ? 'コピーしました' : 'テキストコピー'}
               </button>
               <button
                 onClick={() => copyToClipboard(formatAsMarkdown(), 'markdown')}
-                className="flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg text-sm transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] text-white px-3 py-2 rounded-lg text-sm transition-colors"
               >
                 {copySuccess === 'markdown' ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
                 {copySuccess === 'markdown' ? 'コピーしました' : 'Markdownコピー'}
@@ -317,7 +317,7 @@ ${c.transition || ''}
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Download size={16} className="text-green-400" />
-              <h3 className="text-sm font-semibold text-gray-200 uppercase tracking-wider">ファイル保存</h3>
+              <h3 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">ファイル保存</h3>
             </div>
             <div className="flex gap-2">
               <button
@@ -326,7 +326,7 @@ ${c.transition || ''}
                   `${sanitizeFilename(topic.title)}.txt`,
                   'text/plain;charset=utf-8'
                 )}
-                className="flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg text-sm transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] text-white px-3 py-2 rounded-lg text-sm transition-colors"
               >
                 <Download size={14} />
                 .txt 保存
@@ -337,7 +337,7 @@ ${c.transition || ''}
                   `${sanitizeFilename(topic.title)}.md`,
                   'text/markdown;charset=utf-8'
                 )}
-                className="flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg text-sm transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] text-white px-3 py-2 rounded-lg text-sm transition-colors"
               >
                 <Download size={14} />
                 .md 保存
@@ -349,14 +349,14 @@ ${c.transition || ''}
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Monitor size={16} className="text-cyan-400" />
-              <h3 className="text-sm font-semibold text-gray-200 uppercase tracking-wider">OBS 連携</h3>
+              <h3 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">OBS 連携</h3>
             </div>
-            <div className="bg-gray-800 border border-gray-600 rounded-lg p-4 space-y-4">
+            <div className="bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-lg p-4 space-y-4">
 
               {/* OBS 設定フィールド */}
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
-                  <label className="text-xs text-gray-400 w-28 shrink-0">フォントサイズ</label>
+                  <label className="text-xs text-[var(--color-text-muted)] w-28 shrink-0">フォントサイズ</label>
                   <div className="flex items-center gap-2 flex-1">
                     <input
                       type="number"
@@ -364,40 +364,40 @@ ${c.transition || ''}
                       onChange={(e) => setObsFontSize(e.target.value)}
                       min="12"
                       max="72"
-                      className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                      className="w-16 px-2 py-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
                     />
-                    <span className="text-xs text-gray-400">px</span>
+                    <span className="text-xs text-[var(--color-text-muted)]">px</span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <label className="text-xs text-gray-400 w-28 shrink-0">文字色</label>
+                  <label className="text-xs text-[var(--color-text-muted)] w-28 shrink-0">文字色</label>
                   <input
                     type="text"
                     value={obsColor}
                     onChange={(e) => setObsColor(e.target.value)}
                     placeholder="white / #ffffff"
-                    className="flex-1 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    className="flex-1 px-2 py-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
                   />
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <label className="text-xs text-gray-400 w-28 shrink-0">背景色</label>
+                  <label className="text-xs text-[var(--color-text-muted)] w-28 shrink-0">背景色</label>
                   <input
                     type="text"
                     value={obsBg}
                     onChange={(e) => setObsBg(e.target.value)}
                     placeholder="transparent / #000000"
-                    className="flex-1 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    className="flex-1 px-2 py-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
                   />
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <label className="text-xs text-gray-400 w-28 shrink-0">自動スクロール</label>
+                  <label className="text-xs text-[var(--color-text-muted)] w-28 shrink-0">自動スクロール</label>
                   <button
                     onClick={() => setObsScroll(prev => !prev)}
                     className={`relative w-10 h-5 rounded-full transition-colors ${
-                      obsScroll ? 'bg-cyan-600' : 'bg-gray-600'
+                      obsScroll ? 'bg-cyan-600' : 'bg-[var(--color-surface-hover)]'
                     }`}
                     aria-pressed={obsScroll}
                     aria-label="自動スクロールを切り替え"
@@ -408,7 +408,7 @@ ${c.transition || ''}
                       }`}
                     />
                   </button>
-                  <span className="text-xs text-gray-400">{obsScroll ? 'ON' : 'OFF'}</span>
+                  <span className="text-xs text-[var(--color-text-muted)]">{obsScroll ? 'ON' : 'OFF'}</span>
                 </div>
               </div>
 
@@ -428,17 +428,17 @@ ${c.transition || ''}
                       type="text"
                       value={obsUrl}
                       readOnly
-                      className="flex-1 px-2 py-1.5 bg-gray-900 border border-gray-600 rounded text-gray-300 text-xs focus:outline-none"
+                      className="flex-1 px-2 py-1.5 bg-[var(--color-bg)] border border-[var(--color-border)] rounded text-[var(--color-text-secondary)] text-xs focus:outline-none"
                     />
                     <button
                       onClick={() => copyToClipboard(obsUrl, 'obsUrl')}
-                      className="shrink-0 p-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
+                      className="shrink-0 p-1.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] text-white rounded transition-colors"
                       aria-label="OBS URLをコピー"
                     >
                       {copySuccess === 'obsUrl' ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-[var(--color-text-muted)]">
                     OBS Studio → ソース → ブラウザ → URLに貼り付け
                   </p>
                 </div>
@@ -468,9 +468,9 @@ ${c.transition || ''}
           <section>
             <div className="flex items-center gap-2 mb-3">
               <MessageSquare size={16} className="text-pink-400" />
-              <h3 className="text-sm font-semibold text-gray-200 uppercase tracking-wider">SNS投稿用</h3>
+              <h3 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">SNS投稿用</h3>
             </div>
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="text-xs text-[var(--color-text-muted)] mb-3">
               台本を各プラットフォーム向けに自動変換してコピー
             </p>
             <div className="space-y-2">
@@ -486,14 +486,14 @@ ${c.transition || ''}
                   text += '\n#配信';
                   copyToClipboard(text, 'sns-x');
                 }}
-                className="w-full flex items-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg text-sm transition-colors"
+                className="w-full flex items-center gap-3 bg-[var(--color-surface-alt)] hover:bg-[var(--color-surface-hover)] border border-[var(--color-border)] text-white px-4 py-3 rounded-lg text-sm transition-colors"
               >
                 <Twitter size={16} className="text-sky-400 shrink-0" />
                 <div className="text-left flex-1 min-w-0">
                   <div className="font-medium">X (Twitter) 用</div>
-                  <div className="text-xs text-gray-400">つかみ + コメント — 140字以内</div>
+                  <div className="text-xs text-[var(--color-text-muted)]">つかみ + コメント — 140字以内</div>
                 </div>
-                {copySuccess === 'sns-x' ? <Check size={14} className="text-green-400 shrink-0" /> : <Copy size={14} className="text-gray-400 shrink-0" />}
+                {copySuccess === 'sns-x' ? <Check size={14} className="text-green-400 shrink-0" /> : <Copy size={14} className="text-[var(--color-text-muted)] shrink-0" />}
               </button>
 
               {/* YouTube概要欄用 */}
@@ -514,14 +514,14 @@ ${c.transition || ''}
                   ];
                   copyToClipboard(sections.filter(s => s !== undefined).join('\n'), 'sns-youtube');
                 }}
-                className="w-full flex items-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg text-sm transition-colors"
+                className="w-full flex items-center gap-3 bg-[var(--color-surface-alt)] hover:bg-[var(--color-surface-hover)] border border-[var(--color-border)] text-white px-4 py-3 rounded-lg text-sm transition-colors"
               >
                 <Youtube size={16} className="text-red-400 shrink-0" />
                 <div className="text-left flex-1 min-w-0">
                   <div className="font-medium">YouTube 概要欄用</div>
-                  <div className="text-xs text-gray-400">タイトル + つかみ + 説明 + 出典</div>
+                  <div className="text-xs text-[var(--color-text-muted)]">タイトル + つかみ + 説明 + 出典</div>
                 </div>
-                {copySuccess === 'sns-youtube' ? <Check size={14} className="text-green-400 shrink-0" /> : <Copy size={14} className="text-gray-400 shrink-0" />}
+                {copySuccess === 'sns-youtube' ? <Check size={14} className="text-green-400 shrink-0" /> : <Copy size={14} className="text-[var(--color-text-muted)] shrink-0" />}
               </button>
 
               {/* TikTok キャプション用 — 150字 */}
@@ -534,14 +534,14 @@ ${c.transition || ''}
                   text += '\n#配信 #トレンド #話題';
                   copyToClipboard(text, 'sns-tiktok');
                 }}
-                className="w-full flex items-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg text-sm transition-colors"
+                className="w-full flex items-center gap-3 bg-[var(--color-surface-alt)] hover:bg-[var(--color-surface-hover)] border border-[var(--color-border)] text-white px-4 py-3 rounded-lg text-sm transition-colors"
               >
                 <MessageSquare size={16} className="text-purple-400 shrink-0" />
                 <div className="text-left flex-1 min-w-0">
                   <div className="font-medium">TikTok キャプション用</div>
-                  <div className="text-xs text-gray-400">つかみを150字以内 + ハッシュタグ</div>
+                  <div className="text-xs text-[var(--color-text-muted)]">つかみを150字以内 + ハッシュタグ</div>
                 </div>
-                {copySuccess === 'sns-tiktok' ? <Check size={14} className="text-green-400 shrink-0" /> : <Copy size={14} className="text-gray-400 shrink-0" />}
+                {copySuccess === 'sns-tiktok' ? <Check size={14} className="text-green-400 shrink-0" /> : <Copy size={14} className="text-[var(--color-text-muted)] shrink-0" />}
               </button>
             </div>
           </section>
@@ -550,11 +550,11 @@ ${c.transition || ''}
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Link size={16} className="text-purple-400" />
-              <h3 className="text-sm font-semibold text-gray-200 uppercase tracking-wider">共有リンク</h3>
+              <h3 className="text-sm font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">共有リンク</h3>
             </div>
             <button
               onClick={generateShareUrl}
-              className="w-full flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-3 py-2 rounded-lg text-sm transition-colors"
+              className="w-full flex items-center justify-center gap-2 bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] text-white px-3 py-2 rounded-lg text-sm transition-colors"
             >
               {copySuccess === 'shareUrl' ? (
                 <>
@@ -574,18 +574,18 @@ ${c.transition || ''}
                   type="text"
                   value={shareUrl}
                   readOnly
-                  className="flex-1 px-2 py-1.5 bg-gray-800 border border-gray-600 rounded text-gray-300 text-xs focus:outline-none"
+                  className="flex-1 px-2 py-1.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded text-[var(--color-text-secondary)] text-xs focus:outline-none"
                 />
                 <button
                   onClick={() => copyToClipboard(shareUrl, 'shareUrl')}
-                  className="shrink-0 p-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
+                  className="shrink-0 p-1.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] text-white rounded transition-colors"
                   aria-label="共有URLをコピー"
                 >
                   <Copy size={14} />
                 </button>
               </div>
             )}
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs text-[var(--color-text-muted)] mt-2">
               台本データをURLに埋め込んでシェアします
             </p>
           </section>

@@ -11,8 +11,8 @@ export async function GET() {
     // キャッシュ統計を取得（インメモリ + DB 統合）
     const cacheStats = await memoryCache.getStatsWithDb();
 
-    // コスト制御の統計を取得（インメモリ・ベストエフォート）
-    const costStats = getCostStats();
+    // コスト制御の統計を取得（Supabase永続化）
+    const costStats = await getCostStats();
 
     // 月間コスト推定（1日20回使用想定）
     const dailyCost = usage.estimatedCost * 20;
