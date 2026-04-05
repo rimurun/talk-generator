@@ -260,13 +260,13 @@ function HomeContent() {
         {/* ヒーローセクション */}
         <header className="text-center mb-10 md:mb-14 page-slide-enter">
           {/* ヒーロータイトル */}
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-card-light border border-purple-500/20 text-xs text-purple-300 mb-5">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-card-light border border-cyan-500/30 text-xs text-purple-300 mb-5 font-mono tracking-widest shadow-[0_0_10px_rgba(0,212,255,0.15)]">
             <Sparkles size={12} />
             AI配信サポートツール
           </div>
 
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-black mb-3 tracking-tight">
-            <span className="gradient-text-hero">今日、何を話す？</span>
+            <span className="gradient-text-hero neon-text-cyan">今日、何を話す？</span>
           </h1>
 
           {/* word-break: keep-all で日本語の単語中途切れを防止 */}

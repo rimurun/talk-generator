@@ -37,16 +37,15 @@ export default function GenerateButton({
         disabled={isDisabled}
         aria-label="トーク台本を生成"
         className={`
-          relative w-full max-w-sm font-bold py-4 px-8 rounded-2xl text-lg
+          relative w-full max-w-sm font-bold font-mono tracking-wider py-4 px-8 rounded-2xl text-lg
           transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98]
           focus:outline-none focus:ring-4 focus:ring-cyan-500/30
           disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
-          overflow-hidden text-white
+          overflow-hidden text-white border border-cyan-500/30
+          bg-[var(--color-surface)]/80 backdrop-blur-sm
+          ${loading ? 'neon-glow-cyan' : 'neon-pulse-border'}
         `}
         style={{
-          background: batchMode
-            ? 'linear-gradient(135deg, #7c3aed 0%, #db2777 100%)'
-            : 'linear-gradient(135deg, #00d4ff 0%, #0066ff 60%, #7c3aed 100%)',
           boxShadow: loading
             ? 'none'
             : batchMode
@@ -63,7 +62,7 @@ export default function GenerateButton({
           }}
         />
 
-        <span className="relative flex flex-col items-center gap-1.5">
+        <span className="relative flex flex-col items-center gap-1.5 neon-text-cyan">
           {loading ? (
             <>
               <span className="flex items-center gap-2">
@@ -71,7 +70,7 @@ export default function GenerateButton({
                 生成中...
               </span>
               {progressStep && (
-                <span className="text-sm font-normal opacity-80">{progressStep}</span>
+                <span className="font-mono text-xs tracking-widest uppercase opacity-80 neon-text-cyan">{progressStep}</span>
               )}
             </>
           ) : batchMode ? (
@@ -96,7 +95,7 @@ export default function GenerateButton({
               className="h-full rounded-full transition-all duration-700"
               style={{
                 width: `${getProgressPercent()}%`,
-                background: 'linear-gradient(90deg, #00d4ff, #7c3aed)',
+                background: 'linear-gradient(90deg, rgba(0,212,255,0.8), rgba(124,58,237,0.8))',
               }}
             />
           </div>

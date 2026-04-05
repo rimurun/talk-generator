@@ -14,6 +14,9 @@ export interface ScriptSectionProps {
   /** 編集モード対応 */
   isEditMode?: boolean;
   onEdit?: (value: string) => void;
+  /** タイプライターアニメーション制御 */
+  animIndex?: number;
+  hasAnimated?: boolean;
 }
 
 // カラーごとのスタイル定義
@@ -84,10 +87,15 @@ export default function ScriptSection({
   copySuccess,
   isEditMode = false,
   onEdit,
+  animIndex = 0,
+  hasAnimated = true,
 }: ScriptSectionProps) {
   if (!content && !isEditMode) return null;
 
   const colors = colorMap[colorClass];
+
+  // アニメーション遅延（インデックスごとに150msずつずらす）
+  const animDelay = `${animIndex * 150}ms`;
 
   return (
     <div
@@ -104,9 +112,14 @@ export default function ScriptSection({
             className="w-1 h-4 rounded flex-shrink-0"
             style={{ background: `linear-gradient(180deg, ${colors.accentColor}, ${colors.accentColor}88)` }}
           />
+          {/* 見出し：ターミナルラベル風スタイル＋アニメーション */}
           <h3
-            className="font-semibold text-sm"
-            style={{ color: colors.titleColor }}
+            className={`font-mono font-semibold text-xs tracking-widest uppercase transition-all ${hasAnimated ? 'animate-fade-in' : 'opacity-0'}`}
+            style={{
+              color: 'rgba(34,211,238,0.7)',
+              animationDelay: animDelay,
+              animationFillMode: 'forwards',
+            }}
           >
             {title}
           </h3>
@@ -141,7 +154,15 @@ export default function ScriptSection({
           rows={4}
         />
       ) : (
-        <p className="text-gray-200 leading-relaxed text-sm">{content}</p>
+        <p
+          className={`font-mono text-gray-200 leading-relaxed text-sm ${hasAnimated ? 'animate-fade-in' : 'opacity-0'}`}
+          style={{
+            animationDelay: `${animIndex * 150 + 60}ms`,
+            animationFillMode: 'forwards',
+          }}
+        >
+          {content}
+        </p>
       )}
     </div>
   );

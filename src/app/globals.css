@@ -173,6 +173,7 @@ body {
   border: var(--glass-light-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 /* グラスモーフィズムカード（ミディアム） */
@@ -193,6 +194,12 @@ body {
   border: var(--glass-heavy-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-card-heavy:hover {
+  border-color: rgba(0, 212, 255, 0.15);
+  box-shadow: var(--shadow-lg), 0 0 30px rgba(0, 212, 255, 0.05);
 }
 
 /* グローボーダーカード */
@@ -455,6 +462,79 @@ body {
 .stagger-4 { animation-delay: 0.4s; }
 .stagger-5 { animation-delay: 0.5s; }
 .stagger-6 { animation-delay: 0.6s; }
+
+/* ============================================================
+   SF/サイバーパンク ユーティリティ
+   ============================================================ */
+
+/* ネオングロー */
+.neon-glow-cyan {
+  box-shadow:
+    0 0 5px rgba(0, 212, 255, 0.25),
+    0 0 20px rgba(0, 212, 255, 0.12),
+    0 0 40px rgba(0, 212, 255, 0.04),
+    inset 0 1px 0 rgba(0, 212, 255, 0.08);
+}
+
+.neon-glow-purple {
+  box-shadow:
+    0 0 5px rgba(124, 58, 237, 0.25),
+    0 0 20px rgba(124, 58, 237, 0.12),
+    0 0 40px rgba(124, 58, 237, 0.04),
+    inset 0 1px 0 rgba(124, 58, 237, 0.08);
+}
+
+/* ネオンテキスト */
+.neon-text-cyan {
+  text-shadow:
+    0 0 7px rgba(0, 212, 255, 0.5),
+    0 0 20px rgba(0, 212, 255, 0.2),
+    0 0 40px rgba(0, 212, 255, 0.08);
+}
+
+.neon-text-purple {
+  text-shadow:
+    0 0 7px rgba(124, 58, 237, 0.5),
+    0 0 20px rgba(124, 58, 237, 0.2),
+    0 0 40px rgba(124, 58, 237, 0.08);
+}
+
+/* グリッチエフェクト */
+@keyframes glitch {
+  0%, 100% { transform: translate(0); filter: none; }
+  10% { transform: translate(-2px, 1px); filter: hue-rotate(90deg); }
+  20% { transform: translate(2px, -1px); }
+  30% { transform: translate(-1px, -1px); filter: hue-rotate(180deg); }
+  40% { transform: translate(1px, 2px); }
+  50% { transform: translate(0); filter: hue-rotate(270deg); }
+}
+
+.animate-glitch {
+  animation: glitch 0.3s ease-in-out;
+}
+
+/* タイプライター カーソル */
+@keyframes blink-caret {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.typing-cursor::after {
+  content: '|';
+  color: var(--color-cyan);
+  animation: blink-caret 0.8s step-end infinite;
+  margin-left: 1px;
+}
+
+/* ネオンボーダーパルス */
+@keyframes neon-pulse {
+  0%, 100% { border-color: rgba(0, 212, 255, 0.3); box-shadow: 0 0 5px rgba(0, 212, 255, 0.15); }
+  50% { border-color: rgba(0, 212, 255, 0.6); box-shadow: 0 0 20px rgba(0, 212, 255, 0.3), 0 0 40px rgba(0, 212, 255, 0.1); }
+}
+
+.neon-pulse-border {
+  animation: neon-pulse 2s ease-in-out infinite;
+}
 
 /* ============================================================
    カスタムスクロールバー

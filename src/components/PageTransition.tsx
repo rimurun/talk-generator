@@ -27,7 +27,7 @@ export default function PageTransition({ children }: PageTransitionProps) {
   return (
     <div
       key={animKey}
-      className="page-transition-enter"
+      className="animate-glitch page-transition-enter will-change-transform"
     >
       {children}
     </div>

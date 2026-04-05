@@ -192,8 +192,8 @@ export default function FilterPanel({
                   aria-pressed={isSelected}
                   className={`relative py-3 px-3 min-h-[52px] rounded-xl border transition-all duration-200 touch-manipulation text-sm font-medium text-left overflow-hidden group ${
                     isSelected
-                      ? `bg-gradient-to-br ${style.gradient} border-white/10 ${style.textClass}`
-                      : 'glass-card-light border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-white hover:border-[var(--color-border-alt)]'
+                      ? `bg-gradient-to-br ${style.gradient} border-white/10 ${style.textClass} neon-glow-cyan`
+                      : 'glass-card-light border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-white hover:border-cyan-500/30'
                   }`}
                   style={isSelected ? { boxShadow: `0 0 16px ${style.glowColor}` } : {}}
                 >

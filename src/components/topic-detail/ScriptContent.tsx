@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Copy, Check } from 'lucide-react';
 import ScriptSection from './ScriptSection';
 import { EditableScriptContent } from './types';
@@ -26,6 +27,13 @@ export default function ScriptContent({
   onUpdateViewerQuestion,
   onUpdateExpansion,
 }: ScriptContentProps) {
+  // アニメーション：初回表示時のみ再生（100ms後にトリガー）
+  const [hasAnimated, setHasAnimated] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setHasAnimated(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
+
   if (category === '事件事故') {
     return (
       <div className="space-y-5">
@@ -37,6 +45,8 @@ export default function ScriptContent({
           copySuccess={copySuccess === 'factualReport'}
           isEditMode={isEditMode}
           onEdit={(val) => onUpdateField('factualReport', val)}
+          animIndex={0}
+          hasAnimated={hasAnimated}
         />
         <ScriptSection
           title="状況説明"
@@ -46,6 +56,8 @@ export default function ScriptContent({
           copySuccess={copySuccess === 'seriousContext'}
           isEditMode={isEditMode}
           onEdit={(val) => onUpdateField('seriousContext', val)}
+          animIndex={1}
+          hasAnimated={hasAnimated}
         />
         <ScriptSection
           title="注意事項"
@@ -55,6 +67,8 @@ export default function ScriptContent({
           copySuccess={copySuccess === 'avoidanceNotes'}
           isEditMode={isEditMode}
           onEdit={(val) => onUpdateField('avoidanceNotes', val)}
+          animIndex={2}
+          hasAnimated={hasAnimated}
         />
       </div>
     );
@@ -70,6 +84,8 @@ export default function ScriptContent({
         copySuccess={copySuccess === 'opening'}
         isEditMode={isEditMode}
         onEdit={(val) => onUpdateField('opening', val)}
+        animIndex={0}
+        hasAnimated={hasAnimated}
       />
 
       <ScriptSection
@@ -80,6 +96,8 @@ export default function ScriptContent({
         copySuccess={copySuccess === 'explanation'}
         isEditMode={isEditMode}
         onEdit={(val) => onUpdateField('explanation', val)}
+        animIndex={1}
+        hasAnimated={hasAnimated}
       />
 
       <ScriptSection
@@ -90,6 +108,8 @@ export default function ScriptContent({
         copySuccess={copySuccess === 'comment'}
         isEditMode={isEditMode}
         onEdit={(val) => onUpdateField('streamerComment', val)}
+        animIndex={2}
+        hasAnimated={hasAnimated}
       />
 
       {/* 視聴者参加質問セクション */}
@@ -107,7 +127,12 @@ export default function ScriptContent({
                 className="w-1 h-4 rounded"
                 style={{ background: 'linear-gradient(180deg, #a855f7, #7c3aed)' }}
               />
-              <h3 className="font-semibold text-purple-300 text-sm">視聴者参加質問</h3>
+              <h3
+                className={`font-mono font-semibold text-xs tracking-widest uppercase transition-all ${hasAnimated ? 'animate-fade-in' : 'opacity-0'}`}
+                style={{ color: 'rgba(34,211,238,0.7)', animationDelay: '450ms', animationFillMode: 'forwards' }}
+              >
+                視聴者参加質問
+              </h3>
             </div>
             <button
               onClick={() => onCopy(displayContent.viewerQuestions.join('\n'), 'questions')}
@@ -138,7 +163,11 @@ export default function ScriptContent({
           ) : (
             <ul className="text-gray-200 leading-relaxed space-y-2">
               {displayContent.viewerQuestions.map((question, index) => (
-                <li key={index} className="flex items-start gap-2 text-sm">
+                <li
+                  key={index}
+                  className={`flex items-start gap-2 text-sm font-mono ${hasAnimated ? 'animate-fade-in' : 'opacity-0'}`}
+                  style={{ animationDelay: `${510 + index * 100}ms`, animationFillMode: 'forwards' }}
+                >
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-purple-500/20 text-purple-300 text-xs flex items-center justify-center mt-0.5">
                     {index + 1}
                   </span>
@@ -165,7 +194,12 @@ export default function ScriptContent({
                 className="w-1 h-4 rounded"
                 style={{ background: 'linear-gradient(180deg, #22c55e, #16a34a)' }}
               />
-              <h3 className="font-semibold text-green-300 text-sm">広げ方（3方向）</h3>
+              <h3
+                className={`font-mono font-semibold text-xs tracking-widest uppercase transition-all ${hasAnimated ? 'animate-fade-in' : 'opacity-0'}`}
+                style={{ color: 'rgba(34,211,238,0.7)', animationDelay: '600ms', animationFillMode: 'forwards' }}
+              >
+                広げ方（3方向）
+              </h3>
             </div>
             <button
               onClick={() => onCopy(displayContent.expansions.join('\n'), 'expansions')}
@@ -196,7 +230,11 @@ export default function ScriptContent({
           ) : (
             <ul className="text-gray-200 leading-relaxed space-y-2">
               {displayContent.expansions.map((expansion, index) => (
-                <li key={index} className="flex items-start gap-2 text-sm">
+                <li
+                  key={index}
+                  className={`flex items-start gap-2 text-sm font-mono ${hasAnimated ? 'animate-fade-in' : 'opacity-0'}`}
+                  style={{ animationDelay: `${660 + index * 100}ms`, animationFillMode: 'forwards' }}
+                >
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-green-500/20 text-green-300 text-xs flex items-center justify-center mt-0.5">
                     {index + 1}
                   </span>
@@ -216,6 +254,8 @@ export default function ScriptContent({
         copySuccess={copySuccess === 'transition'}
         isEditMode={isEditMode}
         onEdit={(val) => onUpdateField('transition', val)}
+        animIndex={3}
+        hasAnimated={hasAnimated}
       />
     </div>
   );

@@ -6,6 +6,7 @@ import AuthProvider from '@/components/AuthProvider'
 import AppShell from '@/components/AppShell'
 import ServiceWorkerRegistrar from '@/components/ServiceWorkerRegistrar'
 import GoogleAnalytics from '@/components/GoogleAnalytics'
+import ClientOverlays from '@/components/ClientOverlays'
 
 // セルフホストフォント（CSP対応・パフォーマンス最適化）
 const inter = Inter({
@@ -62,6 +63,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon-192x192.svg" />
       </head>
       <body className={`min-h-screen bg-black text-white antialiased ${inter.variable} ${notoSansJP.variable}`}>
+        <ClientOverlays />
         <GoogleAnalytics />
         <ServiceWorkerRegistrar />
         <ErrorBoundary>

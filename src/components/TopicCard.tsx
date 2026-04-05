@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Topic } from '@/types';
 import { storage } from '@/lib/storage';
 import { ExternalLinkIcon, StarIcon } from './icons';
@@ -46,6 +46,20 @@ export default function TopicCard({ topic, onClick, onTeleprompter }: TopicCardP
   const [ngWords, setNgWords] = useState<string[]>([]);
   // このトピックの台本が履歴に存在するか
   const [hasScript, setHasScript] = useState(false);
+
+  // 3Dチルト用
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [tilt, setTilt] = useState({ x: 0, y: 0, shine: 50 });
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const card = cardRef.current;
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width - 0.5;
+    const y = (e.clientY - rect.top) / rect.height - 0.5;
+    setTilt({ x: y * -6, y: x * 6, shine: (x + 0.5) * 100 });
+  };
+  const handleMouseLeave = () => setTilt({ x: 0, y: 0, shine: 50 });
 
   useEffect(() => {
     // お気に入り状態をチェック
@@ -159,14 +173,29 @@ export default function TopicCard({ topic, onClick, onTeleprompter }: TopicCardP
   };
 
   return (
-    <div 
+    <div
+      ref={cardRef}
       onClick={onClick}
       onKeyDown={handleKeyDown}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
       tabIndex={0}
       role="button"
       aria-label={`${topic.title} - ${topic.category} - 台本を表示`}
-      className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 cursor-pointer transition-all duration-300 hover:bg-gray-700/60 hover:border-gray-600 hover:transform hover:scale-[1.02] focus:outline-none focus:ring-4 focus:ring-blue-500/50 focus:bg-gray-700/60 group relative"
+      className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 cursor-pointer transition-all duration-300 hover:bg-gray-700/60 hover:border-gray-600 hover:scale-[1.02] focus:outline-none focus:ring-4 focus:ring-blue-500/50 focus:bg-gray-700/60 hover:neon-glow-cyan group relative"
+      style={{
+        transform: `perspective(800px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
+        transition: 'transform 0.15s ease-out',
+      }}
     >
+      {/* ホログラムシャインオーバーレイ */}
+      <div
+        className="absolute inset-0 rounded-2xl pointer-events-none z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+        style={{
+          background: `linear-gradient(${105 + tilt.y * 2}deg, transparent 40%, rgba(0,212,255,0.03) ${tilt.shine}%, transparent 60%)`,
+        }}
+      />
+
       {/* コピーメッセージ */}
       {copyMessage && (
         <div className="absolute top-2 right-2 bg-green-600 text-white text-xs px-2 py-1 rounded z-10">

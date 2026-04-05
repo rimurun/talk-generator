@@ -5,7 +5,6 @@ import { Topic, Script, FilterOptions, GenerateScriptResponse } from '@/types';
 import { storage } from '@/lib/storage';
 import { Copy, Check } from 'lucide-react';
 import { RefreshIcon } from './icons';
-import dynamic from 'next/dynamic';
 import TeleprompterView from './TeleprompterView';
 import ExportPanel from './ExportPanel';
 import TopicDetailHeader from './topic-detail/TopicDetailHeader';
@@ -14,9 +13,7 @@ import ScriptContent from './topic-detail/ScriptContent';
 import { EditableScriptContent } from './topic-detail/types';
 import { getAuthHeaders } from '@/lib/api-helpers';
 
-const LoadingSpinner = dynamic(() => import('./LoadingSpinner'), {
-  loading: () => <div className="animate-pulse bg-gray-700 h-8 w-8 rounded-full mx-auto"></div>
-});
+import ScanlineLoader from './ScanlineLoader';
 
 interface TopicDetailProps {
   topic: Topic;
@@ -543,7 +540,7 @@ ${content.transition}
         }
       `}</style>
 
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-4xl mx-auto neon-glow-cyan">
         {/* トピックヘッダー（戻るボタン・カード・NGワード） */}
         <TopicDetailHeader
           topic={topic}
@@ -570,10 +567,7 @@ ${content.transition}
 
         {/* ローディング */}
         {loading && (
-          <div className="text-center py-8">
-            <LoadingSpinner />
-            <p className="text-sm text-[var(--color-text-muted)] mt-3">台本を生成しています...</p>
-          </div>
+          <ScanlineLoader text="GENERATING" subtext="台本を生成しています" />
         )}
 
         {/* 台本表示 */}
