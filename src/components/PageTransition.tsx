@@ -12,12 +12,16 @@ interface PageTransitionProps {
 
 export default function PageTransition({ children }: PageTransitionProps) {
   const pathname = usePathname();
-  // アニメーションのトリガー用キー（パス変更ごとに更新）
   const [animKey, setAnimKey] = useState(pathname);
   const prevPathRef = useRef(pathname);
+  const isFirstRender = useRef(true);
 
   useEffect(() => {
-    // パスが変わったときのみアニメーションを再トリガー
+    // 初回レンダリングではグリッチを発火しない
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     if (prevPathRef.current !== pathname) {
       prevPathRef.current = pathname;
       setAnimKey(pathname);
@@ -27,7 +31,7 @@ export default function PageTransition({ children }: PageTransitionProps) {
   return (
     <div
       key={animKey}
-      className="animate-glitch page-transition-enter will-change-transform"
+      className="page-transition-enter will-change-transform"
     >
       {children}
     </div>
