@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, ChevronRight, Zap } from 'lucide-react';
 import ScriptSection from './ScriptSection';
 import { EditableScriptContent } from './types';
 
@@ -14,6 +14,10 @@ interface ScriptContentProps {
   onUpdateField: (field: keyof EditableScriptContent, value: string) => void;
   onUpdateViewerQuestion: (index: number, value: string) => void;
   onUpdateExpansion: (index: number, value: string) => void;
+  /** 展開トピック選択時のコールバック（台本チェーン用） */
+  onSelectExpansion?: (text: string) => void;
+  /** チェーン生成中フラグ */
+  chainLoading?: boolean;
 }
 
 /** 台本本文コンテンツ（事件事故 / 通常トピックの出し分けを含む） */
@@ -26,6 +30,8 @@ export default function ScriptContent({
   onUpdateField,
   onUpdateViewerQuestion,
   onUpdateExpansion,
+  onSelectExpansion,
+  chainLoading,
 }: ScriptContentProps) {
   // アニメーション：初回表示時のみ再生（100ms後にトリガー）
   const [hasAnimated, setHasAnimated] = useState(false);
@@ -179,33 +185,33 @@ export default function ScriptContent({
         </div>
       )}
 
-      {/* 広げ方セクション */}
+      {/* 次の展開を選ぶ（チェーン生成） */}
       {displayContent.expansions.length > 0 && (
         <div
           className="relative rounded-xl p-5 overflow-hidden"
           style={{
-            background: 'rgba(34,197,94,0.05)',
-            border: '1px solid rgba(34,197,94,0.2)',
+            background: 'rgba(0,212,255,0.03)',
+            border: '1px solid rgba(0,212,255,0.2)',
           }}
         >
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <div
                 className="w-1 h-4 rounded"
-                style={{ background: 'linear-gradient(180deg, #22c55e, #16a34a)' }}
+                style={{ background: 'linear-gradient(180deg, #00d4ff, #7c3aed)' }}
               />
               <h3
                 className={`font-mono font-semibold text-xs tracking-widest uppercase transition-all ${hasAnimated ? 'animate-fade-in' : 'opacity-0'}`}
                 style={{ color: 'rgba(34,211,238,0.7)', animationDelay: '600ms', animationFillMode: 'forwards' }}
               >
-                広げ方（3方向）
+                {onSelectExpansion ? '次の話題を選ぶ' : '広げ方（3方向）'}
               </h3>
             </div>
             <button
               onClick={() => onCopy(displayContent.expansions.join('\n'), 'expansions')}
               aria-label="広げ方をコピー"
-              className="flex items-center gap-1.5 text-green-300 hover:text-white transition-colors duration-200 text-xs px-3 py-1.5 rounded-lg"
-              style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)' }}
+              className="flex items-center gap-1.5 text-cyan-300 hover:text-white transition-colors duration-200 text-xs px-3 py-1.5 rounded-lg"
+              style={{ background: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.2)' }}
             >
               {copySuccess === 'expansions' ? (
                 <Check size={13} className="copy-success-icon text-green-400" />
@@ -222,10 +228,35 @@ export default function ScriptContent({
                   key={i}
                   value={e}
                   onChange={(ev) => onUpdateExpansion(i, ev.target.value)}
-                  className="w-full px-3 py-2 bg-gray-700/60 border border-gray-600/60 rounded-lg text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                  className="w-full px-3 py-2 bg-gray-700/60 border border-gray-600/60 rounded-lg text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none"
                   rows={2}
                 />
               ))}
+            </div>
+          ) : onSelectExpansion ? (
+            <div className="space-y-2">
+              {displayContent.expansions.map((expansion, index) => (
+                <button
+                  key={index}
+                  onClick={() => onSelectExpansion(expansion)}
+                  disabled={chainLoading}
+                  className={`w-full text-left flex items-center gap-3 p-3.5 rounded-xl glass-card-light border border-cyan-500/20 hover:border-cyan-400/50 hover:neon-glow-cyan transition-all duration-200 group disabled:opacity-50 disabled:cursor-not-allowed hologram-appear ${hasAnimated ? '' : 'opacity-0'}`}
+                  style={{ animationDelay: `${660 + index * 120}ms`, animationFillMode: 'forwards' }}
+                >
+                  <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-cyan-500/15 text-cyan-300 text-xs flex items-center justify-center font-mono border border-cyan-500/20 group-hover:bg-cyan-500/25 transition-colors">
+                    <Zap size={14} />
+                  </span>
+                  <span className="text-sm text-[var(--color-text-secondary)] group-hover:text-white flex-1 font-mono leading-relaxed transition-colors">
+                    {expansion}
+                  </span>
+                  <ChevronRight size={16} className="text-cyan-500/30 group-hover:text-cyan-400 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                </button>
+              ))}
+              {chainLoading && (
+                <div className="text-center py-2 font-mono text-xs text-cyan-400/50 animate-pulse tracking-widest">
+                  LOADING NEXT TOPIC...
+                </div>
+              )}
             </div>
           ) : (
             <ul className="text-gray-200 leading-relaxed space-y-2">
@@ -235,7 +266,7 @@ export default function ScriptContent({
                   className={`flex items-start gap-2 text-sm font-mono ${hasAnimated ? 'animate-fade-in' : 'opacity-0'}`}
                   style={{ animationDelay: `${660 + index * 100}ms`, animationFillMode: 'forwards' }}
                 >
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-green-500/20 text-green-300 text-xs flex items-center justify-center mt-0.5">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 text-xs flex items-center justify-center mt-0.5">
                     {index + 1}
                   </span>
                   {expansion}

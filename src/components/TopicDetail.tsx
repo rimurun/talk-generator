@@ -12,6 +12,7 @@ import ScriptActions from './topic-detail/ScriptActions';
 import ScriptContent from './topic-detail/ScriptContent';
 import { EditableScriptContent } from './topic-detail/types';
 import { getAuthHeaders } from '@/lib/api-helpers';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import ScanlineLoader from './ScanlineLoader';
 
@@ -47,6 +48,16 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
 
   // エクスポートパネル表示フラグ
   const [showExportPanel, setShowExportPanel] = useState(false);
+
+  // 台本チェーン（連鎖展開）
+  const [scriptChain, setScriptChain] = useState<Array<{
+    topicTitle: string;
+    topicSummary: string;
+    script: Script;
+  }>>([]);
+  const [chainLoading, setChainLoading] = useState(false);
+  // 現在表示中のチェーン位置（-1 = 元のトピック, 0以降 = チェーン内）
+  const [chainIndex, setChainIndex] = useState(-1);
 
   // 編集モード関連の状態
   const [isEditMode, setIsEditMode] = useState(false);
@@ -219,6 +230,91 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
     } finally {
       setLoading(false);
     }
+  };
+
+  // === 台本チェーン操作 ===
+
+  /** 展開トピックを選択して次の台本を連鎖生成 */
+  const handleSelectExpansion = async (expansionText: string) => {
+    if (!script || chainLoading) return;
+
+    // 現在の台本が元トピックの場合、まずチェーンに元を保存
+    if (chainIndex === -1 && scriptChain.length === 0) {
+      setScriptChain([{
+        topicTitle: topic.title,
+        topicSummary: topic.summary,
+        script,
+      }]);
+    }
+
+    setChainLoading(true);
+    try {
+      const styleProfile = storage.getStyleProfile();
+      const prevTitle = chainIndex >= 0 ? scriptChain[chainIndex].topicTitle : topic.title;
+      const transition = script.content.transition || '';
+
+      const authHeaders = await getAuthHeaders();
+      const response = await fetch('/api/script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({
+          topic: {
+            id: `chain-${Date.now()}`,
+            title: expansionText,
+            category: topic.category,
+            summary: `前のトピック「${prevTitle}」からの展開。${transition}`,
+            sensitivityLevel: 1,
+            riskLevel: 'low',
+          },
+          duration: currentDuration,
+          tension: filters.tension,
+          tone: filters.tone,
+          styleProfile: styleProfile || undefined,
+        }),
+      });
+
+      if (!response.ok) throw new Error('次の台本生成に失敗しました');
+      const data: GenerateScriptResponse = await response.json();
+
+      // チェーンに追加
+      const newChain = [...scriptChain];
+      // 現在位置より後ろのチェーンを切り捨て（分岐を作らない）
+      const insertAt = chainIndex === -1 ? 0 : chainIndex + 1;
+      newChain.splice(insertAt + 1);
+      newChain.push({
+        topicTitle: expansionText,
+        topicSummary: `${prevTitle}からの展開`,
+        script: data.script,
+      });
+
+      setScriptChain(newChain);
+      setChainIndex(newChain.length - 1);
+      setScript(data.script);
+      setEditedContent(null);
+      setIsEditMode(false);
+
+      // スクロールトップ
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '次の台本生成に失敗しました');
+    } finally {
+      setChainLoading(false);
+    }
+  };
+
+  /** チェーン内ナビゲーション */
+  const navigateChain = (index: number) => {
+    if (index < 0) {
+      // 元のトピックに戻る
+      setChainIndex(-1);
+      loadScript();
+      return;
+    }
+    if (index >= scriptChain.length) return;
+    setChainIndex(index);
+    setScript(scriptChain[index].script);
+    setEditedContent(null);
+    setIsEditMode(false);
   };
 
   const handleDurationChange = async (newDuration: 15 | 60 | 180) => {
@@ -541,6 +637,40 @@ ${content.transition}
       `}</style>
 
       <div className="max-w-4xl mx-auto neon-glow-cyan">
+        {/* 台本チェーンステッパー */}
+        {scriptChain.length > 0 && (
+          <div className="mb-4 flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none">
+            <button
+              onClick={() => navigateChain(-1)}
+              className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg font-mono text-[11px] transition-all truncate max-w-[130px] ${
+                chainIndex === -1
+                  ? 'bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 neon-glow-cyan'
+                  : 'bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-white hover:border-cyan-500/30'
+              }`}
+            >
+              {topic.title.length > 12 ? topic.title.slice(0, 12) + '...' : topic.title}
+            </button>
+            {scriptChain.slice(1).map((item, i) => (
+              <div key={i} className="flex items-center gap-1.5 flex-shrink-0">
+                <ChevronRight size={12} className="text-cyan-500/30" />
+                <button
+                  onClick={() => navigateChain(i + 1)}
+                  className={`px-2.5 py-1.5 rounded-lg font-mono text-[11px] transition-all truncate max-w-[130px] ${
+                    chainIndex === i + 1
+                      ? 'bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 neon-glow-cyan'
+                      : 'bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-white hover:border-cyan-500/30'
+                  }`}
+                >
+                  {item.topicTitle.length > 12 ? item.topicTitle.slice(0, 12) + '...' : item.topicTitle}
+                </button>
+              </div>
+            ))}
+            <span className="flex-shrink-0 font-mono text-[10px] text-cyan-500/30 tracking-wider ml-1">
+              {chainIndex === -1 ? 1 : chainIndex + 1}/{scriptChain.length}
+            </span>
+          </div>
+        )}
+
         {/* トピックヘッダー（戻るボタン・カード・NGワード） */}
         <TopicDetailHeader
           topic={topic}
@@ -673,6 +803,8 @@ ${content.transition}
                 onUpdateField={updateEditedField}
                 onUpdateViewerQuestion={updateViewerQuestion}
                 onUpdateExpansion={updateExpansion}
+                onSelectExpansion={handleSelectExpansion}
+                chainLoading={chainLoading}
               />
             </div>
           </div>
