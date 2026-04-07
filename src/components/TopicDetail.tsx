@@ -28,6 +28,8 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
   const [script, setScript] = useState<Script | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // ストリーミング中の生テキスト表示用
+  const [streamingText, setStreamingText] = useState<string>('');
   const [currentDuration, setCurrentDuration] = useState<15 | 60 | 180>(filters.duration);
   // コピー成功フィードバック用（セクション名を格納）
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
@@ -154,78 +156,148 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
     });
   };
 
+  /**
+   * SSEストリーミングでレスポンスを読み取り、Script を返す。
+   * ストリーミング非対応時は従来の JSON パースにフォールバック。
+   */
+  const readStreamResponse = async (
+    response: Response,
+    onStreamToken: (text: string) => void
+  ): Promise<GenerateScriptResponse> => {
+    const contentType = response.headers.get('content-type') || '';
+
+    // SSEストリーミング
+    if (contentType.includes('text/event-stream') && response.body) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let result: GenerateScriptResponse | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+
+        for (const part of parts) {
+          for (const line of part.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'token' && data.text) {
+                onStreamToken(data.text);
+              } else if (data.type === 'done') {
+                result = {
+                  script: data.script,
+                  cost: data.cost,
+                  cached: data.cached,
+                  timestamp: data.timestamp,
+                };
+              } else if (data.type === 'error') {
+                throw new Error(data.message || 'ストリーミング中にエラーが発生しました');
+              }
+            } catch (e) {
+              if (e instanceof SyntaxError) continue; // 不完全なJSONは無視
+              throw e;
+            }
+          }
+        }
+      }
+
+      if (!result) throw new Error('ストリーミングが完了しましたが、結果が取得できませんでした');
+      return result;
+    }
+
+    // フォールバック: 通常のJSONレスポンス
+    return await response.json();
+  };
+
+  /**
+   * 台本を取得する共通関数。SSEストリーミング対応。
+   */
+  const fetchScriptWithStreaming = async (
+    topicData: {
+      id: string; title: string;
+      category: string; summary: string;
+      sensitivityLevel: number; riskLevel: string;
+    },
+    duration: 15 | 60 | 180,
+  ): Promise<GenerateScriptResponse> => {
+    const styleProfile = storage.getStyleProfile();
+    const scriptAuthHeaders = await getAuthHeaders();
+
+    const response = await fetch('/api/script', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+        ...scriptAuthHeaders,
+      },
+      body: JSON.stringify({
+        topic: topicData,
+        duration,
+        tension: filters.tension,
+        tone: filters.tone,
+        styleProfile: styleProfile || undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      if (response.status === 403) {
+        throw new Error(errorData.error || 'ゲストの利用回数上限に達しました。ログインしてご利用ください。');
+      }
+      throw new Error(errorData.error || 'サーバーエラーが発生しました');
+    }
+
+    return readStreamResponse(response, (token) => {
+      setStreamingText(prev => prev + token);
+    });
+  };
+
   const loadScript = async () => {
     setLoading(true);
     setError(null);
+    setStreamingText('');
 
     try {
-      // スタイルプロファイルを取得してリクエストに含める
-      const styleProfile = storage.getStyleProfile();
-
-      const scriptAuthHeaders = await getAuthHeaders();
-      const response = await fetch('/api/script', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...scriptAuthHeaders,
+      const data = await fetchScriptWithStreaming(
+        {
+          id: topic.id,
+          title: topic.title,
+          category: topic.category,
+          summary: topic.summary,
+          sensitivityLevel: topic.sensitivityLevel,
+          riskLevel: topic.riskLevel,
         },
-        body: JSON.stringify({
-          topic: {
-            id: topic.id,
-            title: topic.title,
-            category: topic.category,
-            summary: topic.summary,
-            sensitivityLevel: topic.sensitivityLevel,
-            riskLevel: topic.riskLevel
-          },
-          duration: currentDuration,
-          tension: filters.tension,
-          tone: filters.tone,
-          styleProfile: styleProfile || undefined,
-        }),
-      });
+        currentDuration,
+      );
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 403) {
-          throw new Error(errorData.error || 'ゲストの利用回数上限に達しました。ログインしてご利用ください。');
-        }
-        throw new Error(errorData.error || 'サーバーエラーが発生しました');
-      }
-
-      const data: GenerateScriptResponse = await response.json();
       setScript(data.script);
+      setStreamingText('');
 
-      // レート制限カウンター更新
       if (!data.cached) {
         storage.updateRateLimit('script', data.cost || 0);
       }
-
-      // 使用統計を記録（スタイル学習用）
       storage.trackGeneration(topic.category, data.cached || false);
-
-      // 履歴に追加
       storage.addHistory({
         type: 'script',
         timestamp: new Date().toISOString(),
         topicId: topic.id,
-        scriptSettings: {
-          duration: currentDuration,
-          tension: filters.tension,
-          tone: filters.tone
-        },
+        scriptSettings: { duration: currentDuration, tension: filters.tension, tone: filters.tone },
         cost: data.cost || 0,
-        cached: data.cached || false
+        cached: data.cached || false,
       });
 
-      // TopicCard のテレプロンプターボタンから起動した場合、自動でテレプロンプターを開く
       if (autoTeleprompter) {
         setShowTeleprompter(true);
       }
-
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '台本生成中にエラーが発生しました。もう一度お試しください。';
       setError(errorMessage);
+      setStreamingText('');
       console.error('Script generation error:', err);
     } finally {
       setLoading(false);
@@ -248,33 +320,22 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
     }
 
     setChainLoading(true);
+    setStreamingText('');
     try {
-      const styleProfile = storage.getStyleProfile();
       const prevTitle = chainIndex >= 0 ? scriptChain[chainIndex].topicTitle : topic.title;
       const transition = script.content.transition || '';
 
-      const authHeaders = await getAuthHeaders();
-      const response = await fetch('/api/script', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders },
-        body: JSON.stringify({
-          topic: {
-            id: `chain-${Date.now()}`,
-            title: expansionText,
-            category: topic.category,
-            summary: `前のトピック「${prevTitle}」からの展開。${transition}`,
-            sensitivityLevel: 1,
-            riskLevel: 'low',
-          },
-          duration: currentDuration,
-          tension: filters.tension,
-          tone: filters.tone,
-          styleProfile: styleProfile || undefined,
-        }),
-      });
-
-      if (!response.ok) throw new Error('次の台本生成に失敗しました');
-      const data: GenerateScriptResponse = await response.json();
+      const data = await fetchScriptWithStreaming(
+        {
+          id: `chain-${Date.now()}`,
+          title: expansionText,
+          category: topic.category,
+          summary: `前のトピック「${prevTitle}」からの展開。${transition}`,
+          sensitivityLevel: 1,
+          riskLevel: 'low',
+        },
+        currentDuration,
+      );
 
       // チェーンに追加
       const newChain = [...scriptChain];
@@ -290,6 +351,7 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
       setScriptChain(newChain);
       setChainIndex(newChain.length - 1);
       setScript(data.script);
+      setStreamingText('');
       setEditedContent(null);
       setIsEditMode(false);
 
@@ -324,73 +386,42 @@ export default function TopicDetail({ topic, filters, onBack, autoTeleprompter }
     setRatingComment('');
     setLoading(true);
     setError(null);
-    // 尺変更時は編集モードを解除
+    setStreamingText('');
     setIsEditMode(false);
     setEditedContent(null);
 
     try {
-      // スタイルプロファイルを取得してリクエストに含める
-      const styleProfile = storage.getStyleProfile();
-
-      const scriptAuthHeaders = await getAuthHeaders();
-      const response = await fetch('/api/script', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...scriptAuthHeaders,
+      const data = await fetchScriptWithStreaming(
+        {
+          id: topic.id,
+          title: topic.title,
+          category: topic.category,
+          summary: topic.summary,
+          sensitivityLevel: topic.sensitivityLevel,
+          riskLevel: topic.riskLevel,
         },
-        body: JSON.stringify({
-          topic: {
-            id: topic.id,
-            title: topic.title,
-            category: topic.category,
-            summary: topic.summary,
-            sensitivityLevel: topic.sensitivityLevel,
-            riskLevel: topic.riskLevel
-          },
-          duration: newDuration,
-          tension: filters.tension,
-          tone: filters.tone,
-          styleProfile: styleProfile || undefined,
-        }),
-      });
+        newDuration,
+      );
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 403) {
-          throw new Error(errorData.error || 'ゲストの利用回数上限に達しました。ログインしてご利用ください。');
-        }
-        throw new Error(errorData.error || 'サーバーエラーが発生しました');
-      }
-
-      const data: GenerateScriptResponse = await response.json();
       setScript(data.script);
+      setStreamingText('');
 
-      // レート制限カウンター更新
       if (!data.cached) {
         storage.updateRateLimit('script', data.cost || 0);
       }
-
-      // 使用統計を記録（スタイル学習用）
       storage.trackGeneration(topic.category, data.cached || false);
-
-      // 履歴に追加
       storage.addHistory({
         type: 'script',
         timestamp: new Date().toISOString(),
         topicId: topic.id,
-        scriptSettings: {
-          duration: newDuration,
-          tension: filters.tension,
-          tone: filters.tone
-        },
+        scriptSettings: { duration: newDuration, tension: filters.tension, tone: filters.tone },
         cost: data.cost || 0,
-        cached: data.cached || false
+        cached: data.cached || false,
       });
-
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '台本再生成中にエラーが発生しました。';
+      const errorMessage = err instanceof Error ? err.message : '台本再生成中にエラーが発生しま��た。';
       setError(errorMessage);
+      setStreamingText('');
       console.error('Script regeneration error:', err);
     } finally {
       setLoading(false);
@@ -695,8 +726,47 @@ ${content.transition}
           </div>
         )}
 
-        {/* ローディング */}
-        {loading && (
+        {/* ローディング: ストリーミング中はリアルタイムプレビュー表示 */}
+        {loading && streamingText && (
+          <div
+            className="relative rounded-xl p-6 overflow-hidden mb-6"
+            style={{
+              background: 'rgba(0,10,20,0.92)',
+              border: '1px solid rgba(0,212,255,0.15)',
+              boxShadow: '0 0 30px rgba(0,212,255,0.05)',
+            }}
+          >
+            <div className="absolute top-0 left-0 right-0 h-0.5 overflow-hidden">
+              <div
+                className="h-full animate-pulse"
+                style={{
+                  background: 'linear-gradient(90deg, transparent, #06b6d4, #3b82f6, #8b5cf6, transparent)',
+                  animation: 'shimmer 2s ease-in-out infinite',
+                }}
+              />
+            </div>
+            <div className="flex items-center gap-2 mb-3 font-mono text-[10px] text-cyan-500/50 tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              <span>STREAM:ACTIVE</span>
+              <span className="mx-1 text-cyan-500/20">|</span>
+              <span>TOKENS:{streamingText.length}</span>
+            </div>
+            <pre
+              className="font-mono text-sm text-cyan-100/70 whitespace-pre-wrap break-all leading-relaxed max-h-[350px] overflow-y-auto scrollbar-none"
+              style={{ fontFamily: 'var(--font-noto-sans-jp), monospace' }}
+            >
+              {streamingText}
+              <span className="inline-block w-2 h-4 ml-0.5 bg-cyan-400/80 animate-pulse" />
+            </pre>
+            <style>{`
+              @keyframes shimmer {
+                0% { transform: translateX(-100%); }
+                100% { transform: translateX(100%); }
+              }
+            `}</style>
+          </div>
+        )}
+        {loading && !streamingText && (
           <ScanlineLoader text="GENERATING" subtext="台本を生成しています" />
         )}
 

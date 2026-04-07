@@ -112,7 +112,12 @@ const CATEGORY_RECENCY: Record<string, 'hour' | 'day' | 'week'> = {
 /**
  * Perplexity Sonar APIを使用してトピックを生成
  */
-export async function generateTopicsWithWebSearch(filters: FilterOptions, previousTitles?: string[]): Promise<{
+export async function generateTopicsWithWebSearch(filters: FilterOptions, previousTitles?: string[], options?: {
+  /** 生成するトピック数（デフォルト15） */
+  topicCount?: number;
+  /** 事前取得した外部APIコンテキスト（並列実行時の重複フェッチ回避用） */
+  preloadedContext?: string;
+}): Promise<{
   topics: Topic[];
   cost: number;
   cached: boolean;
@@ -146,31 +151,35 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
     return { topics: generateFallbackTopics(filters), cost: 0, cached: false };
   }
 
-  // GNews / X APIからコンテキストデータを並列取得（失敗してもトピック生成は続行）
-  const targetCategories = filters.categories.length > 0
-    ? filters.categories
-    : ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ'];
-  const needsNews = targetCategories.some(c => c === 'ニュース' || c === 'エンタメ');
-  const needsSns = targetCategories.some(c => c === 'SNS' || c === 'TikTok');
+  // 生成トピック数（並列モード時は少なめに）
+  const topicCount = options?.topicCount || 15;
 
-  const [gnewsData, xTrendsData] = await Promise.all([
-    needsNews ? fetchGNews().catch(() => ({ japan: [], entertainment: [] })) : Promise.resolve({ japan: [], entertainment: [] }),
-    needsSns ? fetchXTrends().catch(() => []) : Promise.resolve([]),
-  ]);
+  // GNews / X APIからコンテキストデータを取得（事前取得データがあればスキップ）
+  let externalContext = options?.preloadedContext || '';
+  if (!externalContext) {
+    const targetCategories = filters.categories.length > 0
+      ? filters.categories
+      : ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ'];
+    const needsNews = targetCategories.some(c => c === 'ニュース' || c === 'エンタメ');
+    const needsSns = targetCategories.some(c => c === 'SNS' || c === 'TikTok');
 
-  // コンテキスト文字列を構築（カテゴリに応じて注入）
-  let externalContext = '';
-  if (gnewsData.japan.length > 0 && targetCategories.includes('ニュース')) {
-    externalContext += '\n【参考：最新ニュース（GNews）】\n' +
-      gnewsData.japan.slice(0, 5).map(a => `- ${a.title}（${a.publishedAt?.slice(0, 10) || ''}）`).join('\n');
-  }
-  if (gnewsData.entertainment.length > 0 && targetCategories.includes('エンタメ')) {
-    externalContext += '\n【参考：最新エンタメ（GNews）】\n' +
-      gnewsData.entertainment.slice(0, 5).map(a => `- ${a.title}（${a.publishedAt?.slice(0, 10) || ''}）`).join('\n');
-  }
-  if (xTrendsData.length > 0 && (targetCategories.includes('SNS') || targetCategories.includes('TikTok'))) {
-    externalContext += '\n【参考：X(Twitter)リアルタイムトレンド】\n' +
-      xTrendsData.slice(0, 10).map(t => `- ${t.name}${t.tweetCount ? `（${t.tweetCount.toLocaleString()}件）` : ''}`).join('\n');
+    const [gnewsData, xTrendsData] = await Promise.all([
+      needsNews ? fetchGNews().catch(() => ({ japan: [], entertainment: [] })) : Promise.resolve({ japan: [], entertainment: [] }),
+      needsSns ? fetchXTrends().catch(() => []) : Promise.resolve([]),
+    ]);
+
+    if (gnewsData.japan.length > 0 && targetCategories.includes('ニュース')) {
+      externalContext += '\n【参考：最新ニュース（GNews）】\n' +
+        gnewsData.japan.slice(0, 5).map(a => `- ${a.title}（${a.publishedAt?.slice(0, 10) || ''}）`).join('\n');
+    }
+    if (gnewsData.entertainment.length > 0 && targetCategories.includes('エンタメ')) {
+      externalContext += '\n【参考：最新エンタメ（GNews）】\n' +
+        gnewsData.entertainment.slice(0, 5).map(a => `- ${a.title}（${a.publishedAt?.slice(0, 10) || ''}）`).join('\n');
+    }
+    if (xTrendsData.length > 0 && (targetCategories.includes('SNS') || targetCategories.includes('TikTok'))) {
+      externalContext += '\n【参考：X(Twitter)リアルタイムトレンド】\n' +
+        xTrendsData.slice(0, 10).map(t => `- ${t.name}${t.tweetCount ? `（${t.tweetCount.toLocaleString()}件）` : ''}`).join('\n');
+    }
   }
 
   const maxRetries = 3;
@@ -274,17 +283,21 @@ ${singleCategoryInstruction}
 ${externalContext ? `\n以下は外部APIから取得した最新データです。これらを参考にしつつ、Web検索で詳細を補完してトピックを生成してください。${externalContext}` : ''}
 
 ${filters.categories.length !== 1 ? `各カテゴリから均等に生成してください。` : ''}
-15件生成してください。各トピックのtitle(50字以内)・category・summary(背景・経緯・影響を含む150-250字)・publishedAt(YYYY-MM-DD)・talkingPoint(配信での切り口30-50字)を含めてください。
+${topicCount}件生成してください。各トピックのtitle(50字以内)・category・summary(背景・経緯・影響を含む150-250字)・publishedAt(YYYY-MM-DD)・talkingPoint(配信での切り口30-50字)を含めてください。
 ${previousTitles && previousTitles.length > 0 ? `除外（既出）: ${previousTitles.slice(0, 10).join(', ')}` : ''}`;
 
       // Perplexity Sonar APIリクエスト
+      // トピック数に応じてトークン量とタイムアウトを調整
+      const maxTokens = topicCount <= 7 ? 2000 : 3000;
+      const timeoutMs = topicCount <= 7 ? 30000 : 40000;
+
       const requestBody: PerplexityRequest = {
         model: PERPLEXITY_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        max_tokens: 3000,
+        max_tokens: maxTokens,
         temperature: 0.5,
         search_recency_filter: recency,
         web_search_options: {
@@ -298,7 +311,7 @@ ${previousTitles && previousTitles.length > 0 ? `除外（既出）: ${previousT
       };
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       const response = await fetch(PERPLEXITY_ENDPOINT, {
         method: 'POST',
@@ -458,6 +471,35 @@ ${previousTitles && previousTitles.length > 0 ? `除外（既出）: ${previousT
   return { topics: fallbackTopics, cost: 0, cached: false };
 }
 
+/**
+ * 外部APIコンテキストを事前取得（並列実行時の重複フェッチ回避用）
+ * route.ts から1回だけ呼び出し、各カテゴリの generateTopicsWithWebSearch に渡す
+ */
+export async function buildExternalContext(categories: string[]): Promise<string> {
+  const needsNews = categories.some(c => c === 'ニュース' || c === 'エンタメ');
+  const needsSns = categories.some(c => c === 'SNS' || c === 'TikTok');
+
+  const [gnewsData, xTrendsData] = await Promise.all([
+    needsNews ? fetchGNews().catch(() => ({ japan: [], entertainment: [] })) : Promise.resolve({ japan: [], entertainment: [] }),
+    needsSns ? fetchXTrends().catch(() => []) : Promise.resolve([]),
+  ]);
+
+  let context = '';
+  if (gnewsData.japan.length > 0) {
+    context += '\n【参考：最新ニュース（GNews）】\n' +
+      gnewsData.japan.slice(0, 5).map(a => `- ${a.title}（${a.publishedAt?.slice(0, 10) || ''}）`).join('\n');
+  }
+  if (gnewsData.entertainment.length > 0) {
+    context += '\n【参考：最新エンタメ（GNews）】\n' +
+      gnewsData.entertainment.slice(0, 5).map(a => `- ${a.title}（${a.publishedAt?.slice(0, 10) || ''}）`).join('\n');
+  }
+  if (xTrendsData.length > 0) {
+    context += '\n【参考：X(Twitter)リアルタイムトレンド】\n' +
+      xTrendsData.slice(0, 10).map(t => `- ${t.name}${t.tweetCount ? `（${t.tweetCount.toLocaleString()}件）` : ''}`).join('\n');
+  }
+  return context;
+}
+
 // ===========================================================
 // テンション別の演出ルール生成
 // ===========================================================
@@ -547,59 +589,32 @@ function buildToneInstruction(tone: string): string {
 }
 
 // ===========================================================
-// 台本生成（OpenAI Chat Completions API）
+// 台本プロンプト構築（共通ヘルパー）
 // ===========================================================
 
-export async function generateScriptWithCache(
-  topic: {
-    id: string;
-    title: string;
-    category: 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '海外おもしろ' | '事件事故';
-    summary: string;
-    sensitivityLevel: 1 | 2 | 3;
-    riskLevel: 'low' | 'medium' | 'high';
-  },
+interface ScriptTopicInput {
+  id: string;
+  title: string;
+  category: 'ニュース' | 'エンタメ' | 'SNS' | 'TikTok' | '海外おもしろ' | '事件事故';
+  summary: string;
+  sensitivityLevel: 1 | 2 | 3;
+  riskLevel: 'low' | 'medium' | 'high';
+}
+
+function buildScriptPrompts(
+  topic: ScriptTopicInput,
   duration: 15 | 60 | 180,
   tension: 'low' | 'medium' | 'high',
   tone: string,
   styleProfile?: string
-): Promise<{
-  script: Script;
-  cost: number;
-  cached: boolean;
-  cacheHitType?: 'exact' | 'fuzzy';
-}> {
-  const cacheKey = createScriptCacheKey(topic.id, duration, tension, tone);
+): { systemPrompt: string; userPrompt: string; maxTokens: number } {
+  const maxTokens = duration === 15 ? 500 : duration === 60 ? 1000 : 2000;
+  const targetChars = duration === 15 ? 100 : duration === 60 ? 400 : 1200;
 
-  // キャッシュチェック（インメモリ → DB）
-  let cachedScript = memoryCache.getScript(cacheKey);
-  if (!cachedScript) {
-    cachedScript = await memoryCache.getScriptFromDb(cacheKey);
-  }
-  if (cachedScript) {
-    if (DEBUG) console.log('台本キャッシュヒット（完全一致）');
-    return { script: cachedScript, cost: 0, cached: true, cacheHitType: 'exact' };
-  }
+  const toneInstruction = buildToneInstruction(tone);
+  const tensionInstruction = buildTensionInstruction(tension);
 
-  const fuzzyMatch = memoryCache.getScriptFuzzy(topic.id, duration, tension, tone);
-  if (fuzzyMatch) {
-    if (DEBUG) console.log(`台本キャッシュヒット（ファジー: ${fuzzyMatch.baseKey}）`);
-    return { script: fuzzyMatch.data, cost: 0, cached: true, cacheHitType: 'fuzzy' };
-  }
-
-  if (!OPENAI_API_KEY) {
-    throw new Error('OpenAI APIキーが設定されていません');
-  }
-
-  try {
-    const maxTokens = duration === 15 ? 500 : duration === 60 ? 1000 : 2000;
-    const targetChars = duration === 15 ? 100 : duration === 60 ? 400 : 1200;
-
-    // 口調・テンションごとの文体ルールを生成
-    const toneInstruction = buildToneInstruction(tone);
-    const tensionInstruction = buildTensionInstruction(tension);
-
-    let systemPrompt = `配信者向け台本作成。配信者がテレプロンプターで読み上げる台本を書くこと。
+  let systemPrompt = `配信者向け台本作成。配信者がテレプロンプターで読み上げる台本を書くこと。
 尺: ${duration}秒(約${targetChars}文字)
 
 ${tensionInstruction}
@@ -624,11 +639,11 @@ JSON返答のみ。`
 JSON返答のみ。`
 }`;
 
-    if (styleProfile) {
-      systemPrompt += `\n\n${styleProfile}`;
-    }
+  if (styleProfile) {
+    systemPrompt += `\n\n${styleProfile}`;
+  }
 
-    const userPrompt = `以下のトピック情報に基づいて台本を作成してください:
+  const userPrompt = `以下のトピック情報に基づいて台本を作成してください:
 
 【トピック詳細】
 - タイトル: ${topic.title}
@@ -659,6 +674,66 @@ JSON形式で返答:
     `}
   }
 }`;
+
+  return { systemPrompt, userPrompt, maxTokens };
+}
+
+// ===========================================================
+// キャッシュチェック共通ヘルパー
+// ===========================================================
+
+async function checkScriptCache(
+  topicId: string, duration: 15 | 60 | 180, tension: string, tone: string
+): Promise<{ script: Script; cacheHitType: 'exact' | 'fuzzy' } | null> {
+  const cacheKey = createScriptCacheKey(topicId, duration, tension, tone);
+
+  let cachedScript = memoryCache.getScript(cacheKey);
+  if (!cachedScript) {
+    cachedScript = await memoryCache.getScriptFromDb(cacheKey);
+  }
+  if (cachedScript) {
+    if (DEBUG) console.log('台本キャッシュヒット（完全一致）');
+    trackUsage(0, 0, true);
+    return { script: cachedScript, cacheHitType: 'exact' };
+  }
+
+  const fuzzyMatch = memoryCache.getScriptFuzzy(topicId, duration, tension, tone);
+  if (fuzzyMatch) {
+    if (DEBUG) console.log(`台本キャッシュヒット（ファジー: ${fuzzyMatch.baseKey}）`);
+    trackUsage(0, 0, true);
+    return { script: fuzzyMatch.data, cacheHitType: 'fuzzy' };
+  }
+
+  return null;
+}
+
+// ===========================================================
+// 台本生成（OpenAI Chat Completions API — 非ストリーミング）
+// ===========================================================
+
+export async function generateScriptWithCache(
+  topic: ScriptTopicInput,
+  duration: 15 | 60 | 180,
+  tension: 'low' | 'medium' | 'high',
+  tone: string,
+  styleProfile?: string
+): Promise<{
+  script: Script;
+  cost: number;
+  cached: boolean;
+  cacheHitType?: 'exact' | 'fuzzy';
+}> {
+  const cached = await checkScriptCache(topic.id, duration, tension, tone);
+  if (cached) {
+    return { script: cached.script, cost: 0, cached: true, cacheHitType: cached.cacheHitType };
+  }
+
+  if (!OPENAI_API_KEY) {
+    throw new Error('OpenAI APIキーが設定されていません');
+  }
+
+  try {
+    const { systemPrompt, userPrompt, maxTokens } = buildScriptPrompts(topic, duration, tension, tone, styleProfile);
 
     const maxRetries = 3;
     let data: any;
@@ -721,7 +796,7 @@ JSON形式で返答:
     trackUsage(totalTokens, cost, false);
 
     const safeScriptData = sanitizeScriptContent(scriptData);
-    memoryCache.setScript(cacheKey, safeScriptData);
+    memoryCache.setScript(createScriptCacheKey(topic.id, duration, tension, tone), safeScriptData);
 
     return { script: safeScriptData, cost, cached: false };
 
@@ -729,6 +804,152 @@ JSON形式で返答:
     console.error('台本生成エラー:', error?.message);
     throw error;
   }
+}
+
+// ===========================================================
+// 台本生成（OpenAI Chat Completions API — SSEストリーミング）
+// ===========================================================
+
+/**
+ * ストリーミング台本生成。onToken コールバックでトークンを逐次送出し、
+ * 完了時にパース済み Script を返す。キャッシュヒット時は即座にスクリプトを返す。
+ */
+export async function generateScriptStreaming(
+  topic: ScriptTopicInput,
+  duration: 15 | 60 | 180,
+  tension: 'low' | 'medium' | 'high',
+  tone: string,
+  styleProfile: string | undefined,
+  onToken: (text: string) => void
+): Promise<{
+  script: Script;
+  cost: number;
+  cached: boolean;
+  cacheHitType?: 'exact' | 'fuzzy';
+}> {
+  // キャッシュチェック — ヒット時はストリーミング不要
+  const cached = await checkScriptCache(topic.id, duration, tension, tone);
+  if (cached) {
+    return { script: cached.script, cost: 0, cached: true, cacheHitType: cached.cacheHitType };
+  }
+
+  if (!OPENAI_API_KEY) {
+    throw new Error('OpenAI APIキーが設定されていません');
+  }
+
+  const { systemPrompt, userPrompt, maxTokens } = buildScriptPrompts(topic, duration, tension, tone, styleProfile);
+
+  // OpenAI ストリーミングリクエスト（リトライ付き）
+  const maxRetries = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(OPENAI_CHAT_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          max_tokens: maxTokens,
+          temperature: 0.6,
+          stream: true,
+          stream_options: { include_usage: true },
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 429 && attempt < maxRetries) {
+          const retryAfter = parseInt(response.headers.get('retry-after') || '0', 10);
+          const delay = retryAfter > 0 ? retryAfter * 1000 : attempt * 2000;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        throw new Error(`OpenAI API Error: ${response.status} ${response.statusText}`);
+      }
+
+      // ストリーム読み取り
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = '';
+      let sseBuffer = '';
+      let promptTokens = 0;
+      let completionTokens = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        sseBuffer += decoder.decode(value, { stream: true });
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (payload === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(payload);
+            const token = parsed.choices?.[0]?.delta?.content || '';
+            if (token) {
+              accumulated += token;
+              onToken(token);
+            }
+            // usage は最終チャンクに含まれる
+            if (parsed.usage) {
+              promptTokens = parsed.usage.prompt_tokens || 0;
+              completionTokens = parsed.usage.completion_tokens || 0;
+            }
+          } catch {
+            // 不完全なJSON行は無視
+          }
+        }
+      }
+
+      // 完了: JSON パースしてスクリプトを構築
+      const cleaned = accumulated.replace(/```json\s*|\s*```/g, '').trim();
+      let scriptData: Script;
+      try {
+        scriptData = JSON.parse(cleaned);
+        if (!scriptData.content || typeof scriptData.content !== 'object') {
+          throw new Error('Invalid script structure');
+        }
+      } catch {
+        scriptData = createFallbackScript(topic, duration, tension, tone);
+      }
+
+      // コスト計算
+      let cost = 0;
+      if (promptTokens > 0 || completionTokens > 0) {
+        cost = (promptTokens / 1_000_000) * OPENAI_COST_PER_1M_INPUT_TOKENS
+             + (completionTokens / 1_000_000) * OPENAI_COST_PER_1M_OUTPUT_TOKENS;
+      }
+      const totalTokens = promptTokens + completionTokens;
+      trackUsage(totalTokens, cost, false);
+
+      const safeScriptData = sanitizeScriptContent(scriptData);
+      memoryCache.setScript(createScriptCacheKey(topic.id, duration, tension, tone), safeScriptData);
+
+      return { script: safeScriptData, cost, cached: false };
+
+    } catch (error: any) {
+      lastError = error;
+      if (attempt < maxRetries && !error.message?.includes('認証エラー')) {
+        const delay = Math.pow(2, attempt) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+    }
+  }
+
+  throw lastError || new Error('OpenAI API: ストリーミング生成に失敗しました');
 }
 
 // ===========================================================

@@ -29,6 +29,10 @@ export const metadata: Metadata = {
   creator: 'Talk Generator Team',
   publisher: 'Talk Generator',
   robots: 'index, follow',
+  icons: {
+    icon: '/icons/icon-192x192.svg',
+    apple: '/icons/icon-192x192.svg',
+  },
   openGraph: {
     type: 'website',
     locale: 'ja_JP',
@@ -57,7 +61,7 @@ export default function RootLayout({
       <head>
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#1f2937" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="TalkGen" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.svg" />

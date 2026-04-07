@@ -23,16 +23,21 @@ export function middleware(request: NextRequest) {
     const origin = request.headers.get('origin');
     const host = request.headers.get('host');
 
-    // Originヘッダーのチェック（null も拒否: sandbox iframe CSRF対策）
-    const expectedOrigin = host
-      ? `${request.nextUrl.protocol}//${host}`.replace(/\/$/, '')
-      : null;
+    // Originヘッダーのチェック
+    // - origin が未送信（null）: 同一オリジンGETリクエスト → 許可
+    // - origin が文字列 "null": sandboxed iframe CSRF → 拒否
+    // - origin が expectedOrigin と不一致: 外部オリジン → 拒否
+    if (origin !== null) {
+      const expectedOrigin = host
+        ? `${request.nextUrl.protocol}//${host}`.replace(/\/$/, '')
+        : null;
 
-    if (!expectedOrigin || origin !== expectedOrigin) {
-      return NextResponse.json(
-        { error: '外部オリジンからのアクセスは許可されていません' },
-        { status: 403 }
-      );
+      if (!expectedOrigin || origin !== expectedOrigin) {
+        return NextResponse.json(
+          { error: '外部オリジンからのアクセスは許可されていません' },
+          { status: 403 }
+        );
+      }
     }
   }
 
