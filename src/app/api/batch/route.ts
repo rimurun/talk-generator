@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from 'next/server';
-import { generateTopicsWithWebSearch } from '@/lib/openai-responses';
+import { generateTopicsWithWebSearch, buildExternalContext } from '@/lib/openai-responses';
 import { BatchGenerationRequest, BatchGenerationResponse } from '@/types';
 import { memoryCache, createBatchCacheKey } from '@/lib/cache';
 import { checkRateLimit } from '@/lib/server-rate-limit';
@@ -76,12 +76,19 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now();
     const topicsPerCategory = Math.ceil(body.count / body.categories.length);
 
+    // 外部APIコンテキストを1回だけ事前取得
+    const preloadedContext = await buildExternalContext(body.categories);
+    const perCatCount = Math.min(topicsPerCategory + 2, 10);
+
     // 🚀 全カテゴリを並列実行（Promise.all）
     const results = await Promise.all(
       body.categories.map(async (category) => {
         try {
           const filters = { ...body.filters, categories: [category] };
-          const result = await generateTopicsWithWebSearch(filters);
+          const result = await generateTopicsWithWebSearch(filters, undefined, {
+            topicCount: perCatCount,
+            preloadedContext,
+          });
           return {
             category,
             topics: result.topics.slice(0, Math.max(topicsPerCategory, 5)),

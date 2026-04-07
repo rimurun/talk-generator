@@ -1,48 +1,70 @@
-// Google Trends — 日本の急上昇ワードを取得（APIキー不要）
+// Google Trends — 日本の急上昇ワードを取得（RSS フィード、APIキー不要）
 
 export interface GoogleTrendItem {
   title: string;
   description: string;
-  trafficVolume: string; // 例: "100,000+"
+  trafficVolume: string; // 例: "200+"
 }
 
 /**
- * Google Trends の日本デイリートレンドを取得
- * google-trends-api パッケージを使用
+ * Google Trends の日本デイリートレンドを RSS フィードから取得
+ * 外部パッケージ不要、標準 fetch のみ使用
  */
 export async function fetchGoogleTrends(): Promise<GoogleTrendItem[]> {
   try {
-    // google-trends-api は CommonJS モジュールのため dynamic import
-    const googleTrends = await import('google-trends-api');
-    const result = await googleTrends.default.dailyTrends({
-      geo: 'JP',
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch('https://trends.google.co.jp/trending/rss?geo=JP', {
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
 
-    const parsed = JSON.parse(result);
-    const days = parsed?.default?.trendingSearchesDays;
-    if (!Array.isArray(days) || days.length === 0) return [];
-
-    const items: GoogleTrendItem[] = [];
-    // 直近2日分のトレンドを取得
-    for (const day of days.slice(0, 2)) {
-      if (!Array.isArray(day.trendingSearches)) continue;
-      for (const search of day.trendingSearches) {
-        const title = search.title?.query || '';
-        const desc = search.articles?.[0]?.title || '';
-        const traffic = search.formattedTraffic || '';
-        if (title) {
-          items.push({
-            title: title.slice(0, 60),
-            description: desc.slice(0, 80),
-            trafficVolume: traffic,
-          });
-        }
-      }
+    if (!res.ok) {
+      console.error(`Google Trends RSS エラー: HTTP ${res.status}`);
+      return [];
     }
 
-    return items.slice(0, 15);
+    const xml = await res.text();
+    return parseRssItems(xml).slice(0, 15);
   } catch (err) {
     console.error('Google Trends取得エラー:', err);
     return [];
   }
+}
+
+/** RSS XML から <item> を正規表現でパース */
+function parseRssItems(xml: string): GoogleTrendItem[] {
+  const items: GoogleTrendItem[] = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const block = match[1];
+
+    const title = extractTag(block, 'title');
+    if (!title) continue;
+
+    // <ht:approx_traffic> からトラフィック量を取得
+    const traffic = extractTag(block, 'ht:approx_traffic') || '';
+
+    // <ht:news_item_title> から関連ニュースのタイトルを取得（概要として使用）
+    const newsTitle = extractTag(block, 'ht:news_item_title') || '';
+
+    items.push({
+      title: title.slice(0, 60),
+      description: newsTitle.slice(0, 80),
+      trafficVolume: traffic,
+    });
+  }
+
+  return items;
+}
+
+/** XML タグの中身を抽出するヘルパー */
+function extractTag(xml: string, tag: string): string {
+  const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`<${escaped}>([^<]*)</${escaped}>`);
+  const m = xml.match(regex);
+  return m ? m[1].trim() : '';
 }

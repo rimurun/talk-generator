@@ -54,14 +54,22 @@ export default function ApiStatusIndicator({ className = '' }: ApiStatusIndicato
       {apis.map((api) => (
         <div
           key={api.name}
-          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
-            api.enabled
-              ? 'bg-green-500/10 border-green-500/20 text-green-400'
-              : 'bg-gray-500/10 border-gray-500/20 text-gray-500'
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-medium transition-all duration-300 ${
+            api.enabled ? 'neon-pulse-border' : ''
           }`}
+          style={{
+            background: api.enabled ? 'rgba(0,212,255,0.1)' : 'rgba(255,255,255,0.03)',
+            color: api.enabled ? '#00d4ff' : 'rgba(255,255,255,0.2)',
+            border: `1px solid ${api.enabled ? 'rgba(0,212,255,0.4)' : 'rgba(255,255,255,0.06)'}`,
+            boxShadow: api.enabled ? '0 0 8px rgba(0,212,255,0.3), inset 0 0 8px rgba(0,212,255,0.05)' : 'none',
+            textShadow: api.enabled ? '0 0 6px rgba(0,212,255,0.5)' : 'none',
+          }}
           title={`${api.name} — ${api.role}${api.enabled ? '（接続中）' : '（未設定）'}`}
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${api.enabled ? 'bg-green-400' : 'bg-gray-500'}`} />
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${api.enabled ? 'animate-pulse' : ''}`}
+            style={{ background: api.enabled ? '#00d4ff' : 'rgba(255,255,255,0.15)', boxShadow: api.enabled ? '0 0 4px #00d4ff' : 'none' }}
+          />
           {api.name}
         </div>
       ))}

@@ -977,16 +977,18 @@ export default function TrendingPage() {
                   ].map(s => (
                     <span
                       key={s.label}
-                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium"
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-medium transition-all duration-300 ${s.active ? 'neon-pulse-border' : ''}`}
                       style={{
-                        background: s.active ? 'rgba(0,212,255,0.08)' : 'rgba(255,255,255,0.03)',
-                        color: s.active ? 'rgba(0,212,255,0.7)' : 'rgba(255,255,255,0.2)',
-                        border: `1px solid ${s.active ? 'rgba(0,212,255,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                        background: s.active ? 'rgba(0,212,255,0.1)' : 'rgba(255,255,255,0.03)',
+                        color: s.active ? '#00d4ff' : 'rgba(255,255,255,0.2)',
+                        border: `1px solid ${s.active ? 'rgba(0,212,255,0.4)' : 'rgba(255,255,255,0.06)'}`,
+                        boxShadow: s.active ? '0 0 8px rgba(0,212,255,0.3), inset 0 0 8px rgba(0,212,255,0.05)' : 'none',
+                        textShadow: s.active ? '0 0 6px rgba(0,212,255,0.5)' : 'none',
                       }}
                     >
                       <span
-                        className="w-1.5 h-1.5 rounded-full"
-                        style={{ background: s.active ? '#00d4ff' : 'rgba(255,255,255,0.15)' }}
+                        className={`w-1.5 h-1.5 rounded-full ${s.active ? 'animate-pulse' : ''}`}
+                        style={{ background: s.active ? '#00d4ff' : 'rgba(255,255,255,0.15)', boxShadow: s.active ? '0 0 4px #00d4ff' : 'none' }}
                       />
                       {s.label}
                     </span>

@@ -1,4 +1,4 @@
-// NewsAPI.org — 日本のトップニュース + 国際ニュース（無料枠 100回/日）
+// NewsAPI.org — 海外ニュース取得（日本ニュースは GNews + Yahoo RSS でカバー）
 
 export interface NewsApiItem {
   title: string;
@@ -9,7 +9,7 @@ export interface NewsApiItem {
 }
 
 /**
- * NewsAPI で日本のトップヘッドラインを取得
+ * NewsAPI で海外トップヘッドラインを取得
  * 環境変数 NEWS_API_KEY が必要
  */
 export async function fetchNewsApi(): Promise<{ japan: NewsApiItem[]; world: NewsApiItem[] }> {
@@ -20,15 +20,18 @@ export async function fetchNewsApi(): Promise<{ japan: NewsApiItem[]; world: New
   }
 
   try {
-    // 日本ニュースと国際ニュースを並列取得（2リクエスト/呼び出し）
-    const [japanRes, worldRes] = await Promise.allSettled([
-      fetchHeadlines(apiKey, 'jp', 'general', 10),
-      fetchHeadlines(apiKey, 'us', 'general', 8),
+    // 米国ニュース：一般＋テクノロジーを並列取得
+    const [generalRes, techRes] = await Promise.allSettled([
+      fetchHeadlines(apiKey, 'us', 'general', 10),
+      fetchHeadlines(apiKey, 'us', 'technology', 8),
     ]);
 
     return {
-      japan: japanRes.status === 'fulfilled' ? japanRes.value : [],
-      world: worldRes.status === 'fulfilled' ? worldRes.value : [],
+      japan: [], // 日本ニュースは GNews + Yahoo RSS に委譲
+      world: [
+        ...(generalRes.status === 'fulfilled' ? generalRes.value : []),
+        ...(techRes.status === 'fulfilled' ? techRes.value : []),
+      ],
     };
   } catch (err) {
     console.error('NewsAPI取得エラー:', err);

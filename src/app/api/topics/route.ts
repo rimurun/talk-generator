@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateTopicsWithWebSearch } from '@/lib/openai-responses';
+import { generateTopicsWithWebSearch, buildExternalContext } from '@/lib/openai-responses';
 import { mockTopics } from '@/lib/mock-data';
 import { GenerateTopicsRequest, Topic } from '@/types';
 import { checkRateLimit } from '@/lib/server-rate-limit';
@@ -83,12 +83,18 @@ export async function POST(request: NextRequest) {
         async start(controller) {
           try {
             if (useParallelMode) {
+              // 外部APIコンテキストを1回だけ事前取得（重複フェッチ回避）
+              const preloadedContext = await buildExternalContext(resolvedCategories);
+              // カテゴリ数に応じてトピック数を最適化（最終的に15件に絞るため）
+              const perCatCount = Math.min(Math.ceil(15 / resolvedCategories.length) + 2, 10);
+
               // 1カテゴリ1グループで並列生成（singleCategoryInstructionが発動し偏り防止）
               const results = await Promise.all(
                 resolvedCategories.map(cat =>
                   generateTopicsWithWebSearch(
                     { ...filters, categories: [cat] },
-                    previousTitles
+                    previousTitles,
+                    { topicCount: perCatCount, preloadedContext }
                   ).catch(err => {
                     console.error(`ストリーム並列: カテゴリ ${cat} エラー:`, err);
                     return { topics: [] as Topic[], cost: 0, cached: false };
@@ -180,12 +186,17 @@ export async function POST(request: NextRequest) {
         : (filters.includeIncidents ? [...allCategories, '事件事故'] : allCategories);
 
       if (categories.length >= 2) {
+        // 外部APIコンテキストを1回だけ事前取得
+        const preloadedContext = await buildExternalContext(categories);
+        const perCatCount = Math.min(Math.ceil(15 / categories.length) + 2, 10);
+
         // 1カテゴリ1グループで並列実行（singleCategoryInstructionが発動し偏り防止）
         const results = await Promise.all(
           categories.map(cat =>
             generateTopicsWithWebSearch(
               { ...filters, categories: [cat] },
-              previousTitles
+              previousTitles,
+              { topicCount: perCatCount, preloadedContext }
             ).catch(err => {
               console.error(`カテゴリ ${cat} エラー:`, err);
               return { topics: [] as Topic[], cost: 0, cached: false };

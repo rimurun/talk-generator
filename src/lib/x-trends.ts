@@ -22,8 +22,7 @@ export async function fetchXTrends(): Promise<XTrendItem[]> {
     const timeout = setTimeout(() => controller.abort(), 8000);
 
     // 日本の WOEID: 23424856
-    const url =
-      'https://api.x.com/2/trends/by/woeid/23424856?max_trends=20&trend.fields=trend_name,tweet_count';
+    const url = 'https://api.x.com/2/trends/by/woeid/23424856';
 
     const res = await fetch(url, {
       headers: {
