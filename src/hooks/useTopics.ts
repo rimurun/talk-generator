@@ -191,12 +191,13 @@ export function useTopics(): UseTopicsReturn {
 
     } catch (error) {
       console.error('トピック生成エラー:', error);
-      // ゲストはフォールバックしない（使用回数の二重消費防止）
-      if (!user) {
-        setError(error instanceof Error ? error.message : 'トピック生成中にエラーが発生しました');
+      const errMsg = error instanceof Error ? error.message : '';
+      // ゲスト上限到達の場合はフォールバックせずエラー表示
+      if (errMsg.includes('ゲストの利用回数上限')) {
+        setError(errMsg);
         return;
       }
-      // 認証済みユーザーのみフォールバック
+      // ストリーミング失敗時は非ストリーミングにフォールバック（ゲスト含む）
       try {
         setProgressStep('再試行中...');
         const previousTitles = storage.getPreviousTopicTitles();

@@ -221,9 +221,12 @@ export async function generateTopicsWithWebSearch(filters: FilterOptions, previo
         ? filters.categories
         : ['ニュース', 'エンタメ', 'SNS', 'TikTok', '海外おもしろ', ...((filters.includeIncidents || filters.categories.includes('事件事故')) ? ['事件事故'] : [])];
 
-      // 単一カテゴリ指示
+      // 単一カテゴリ指示（内容の一致も強制）
       const singleCategoryInstruction = filters.categories.length === 1
-        ? `【重要】すべてのトピックのカテゴリは「${filters.categories[0]}」にしてください。他のカテゴリは生成禁止。`
+        ? `【絶対厳守】すべてのトピックのカテゴリは「${filters.categories[0]}」にしてください。他のカテゴリは生成禁止。
+【内容の一致も必須】カテゴリラベルだけでなく、トピックの内容自体が「${filters.categories[0]}」に該当するものだけを生成すること。
+例えば「事件事故」カテゴリなら実際の事件・事故・災害・逮捕のニュースのみ。スポーツ結果やエンタメは絶対に含めない。
+「エンタメ」カテゴリならエンタメの話題のみ。ニュースや事件は絶対に含めない。`
         : '';
 
       // recency設定（ユーザーの期間選択を優先、未指定ならカテゴリ別デフォルト）
@@ -410,14 +413,39 @@ ${previousTitles && previousTitles.length > 0 ? `除外（既出）: ${previousT
       // 後処理
       let processedTopics = removeDuplicateTopics(topicsData);
 
+      // 単一カテゴリ選択時のコンテンツ検証（ラベルだけでなく内容も一致させる）
+      if (filters.categories.length === 1) {
+        const selectedCat = filters.categories[0];
+        const catKeywords: Record<string, string[]> = {
+          '事件事故': ['事件', '事故', '逮捕', '死亡', '火災', '災害', '容疑', '被害', '捜査', '殺人', '強盗', '詐欺', '暴行', '窃盗', '不正', '違反', '摘発', '救急', '負傷'],
+          'エンタメ': ['映画', 'アニメ', '音楽', 'ドラマ', 'ゲーム', '芸能', 'アイドル', '俳優', '女優', '歌手', 'バンド', '漫画', 'テレビ', '配信', 'ライブ', 'コンサート', '声優'],
+          'SNS': ['Twitter', 'X', 'Instagram', 'バズ', 'トレンド', 'ハッシュタグ', 'フォロワー', 'いいね', 'リポスト', '拡散', 'インフルエンサー'],
+          'TikTok': ['TikTok', 'ショート', 'チャレンジ', 'バイラル', 'リール', '再生数', 'クリエイター'],
+          '海外おもしろ': ['海外', '外国', 'アメリカ', 'ヨーロッパ', '珍', 'ユニーク', 'おもしろ', '世界'],
+        };
+        const keywords = catKeywords[selectedCat];
+        if (keywords) {
+          const filtered = processedTopics.filter(t => {
+            const text = (t.title + ' ' + t.summary).toLowerCase();
+            return keywords.some(kw => text.includes(kw.toLowerCase()));
+          });
+          // キーワード一致が1件以上あればそちらを使用（0件なら全件残す）
+          if (filtered.length > 0) {
+            processedTopics = filtered;
+          }
+        }
+      }
+
       // includeIncidentsフィルタ（カテゴリで事件事故を明示選択している場合は除外しない）
       const incidentsExplicitlySelected = filters.categories.includes('事件事故');
       if (!filters.includeIncidents && !incidentsExplicitlySelected) {
         processedTopics = processedTopics.filter(t => t.category !== '事件事故');
       }
 
-      // カテゴリバランス調整
-      processedTopics = balanceTopicCategories(processedTopics);
+      // カテゴリバランス調整（単一カテゴリ選択時はスキップ）
+      if (filters.categories.length !== 1) {
+        processedTopics = balanceTopicCategories(processedTopics);
+      }
 
       // previousTitlesとの重複除去
       if (previousTitles && previousTitles.length > 0) {
@@ -608,7 +636,7 @@ function buildScriptPrompts(
   tone: string,
   styleProfile?: string
 ): { systemPrompt: string; userPrompt: string; maxTokens: number } {
-  const maxTokens = duration === 15 ? 500 : duration === 60 ? 1000 : 2000;
+  const maxTokens = duration === 15 ? 800 : duration === 60 ? 1500 : 2500;
   const targetChars = duration === 15 ? 100 : duration === 60 ? 400 : 1200;
 
   const toneInstruction = buildToneInstruction(tone);
@@ -635,8 +663,8 @@ JSON返答のみ。`
 - streamerComment: 配信者としての率直な感想・意見（約${Math.floor(targetChars * 0.3)}字）
 - viewerQuestions: 視聴者に振る質問3つ（コメント欄が盛り上がる問いかけ）
 - expansions: 話を広げられる関連トピック3件
-- transition: 次の話題への自然な繋ぎ
-JSON返答のみ。`
+- transition: 【必須】次の話題への自然な繋ぎ文。例:「さて、次の話題もなかなか面白いんだけど...」「じゃあ次いってみよう！」等。必ず含めること。
+JSON返答のみ。全フィールドを省略せず出力すること。`
 }`;
 
   if (styleProfile) {
@@ -970,7 +998,7 @@ function guessSensitivityLevel(title: string, summary: string): 1 | 2 | 3 {
   return 1;
 }
 
-/** 台本サニタイズ */
+/** 台本サニタイズ + 欠落フィールド補完 */
 function sanitizeScriptContent(script: Script): Script {
   const sanitizedContent: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(script.content as Record<string, unknown>)) {
@@ -982,7 +1010,21 @@ function sanitizeScriptContent(script: Script): Script {
       sanitizedContent[key] = value;
     }
   }
-  return { ...script, content: sanitizedContent as Script['content'] };
+
+  // 通常モード（非事件事故）でtransitionが欠落している場合はフォールバック生成
+  const content = sanitizedContent as Script['content'];
+  if (content.opening !== undefined && !content.transition) {
+    content.transition = 'さて、次の話題にいってみましょう。';
+  }
+  // viewerQuestionsとexpansionsも空配列フォールバック
+  if (content.opening !== undefined && !Array.isArray(content.viewerQuestions)) {
+    content.viewerQuestions = [];
+  }
+  if (content.opening !== undefined && !Array.isArray(content.expansions)) {
+    content.expansions = [];
+  }
+
+  return { ...script, content };
 }
 
 /** フォールバックスクリプト生成 */

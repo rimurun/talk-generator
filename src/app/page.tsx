@@ -74,23 +74,24 @@ function HomeContent() {
   // カテゴリ詳細モーダル用：現在開いているカテゴリ名
   const [detailCategory, setDetailCategory] = useState<string | null>(null);
 
-  // トレンドページからのキーワード自動生成（マウント時1回のみ）
+  // トレンドページからのキーワード自動生成
+  // searchParamsを依存配列に含め、クエリ変更時にも確実に検知する
   const trendingTriggered = useRef(false);
+  const keywordParam = searchParams.get('keyword');
+  const categoryParam = searchParams.get('category');
   useEffect(() => {
     if (trendingTriggered.current) return;
-    const keyword = searchParams.get('keyword');
-    const category = searchParams.get('category');
-    if (!keyword) return;
+    if (!keywordParam) return;
 
     trendingTriggered.current = true;
     const trendingFilters: FilterOptions = {
-      categories: category ? [category] : [],
-      includeIncidents: false,
+      categories: categoryParam ? [categoryParam] : [],
+      includeIncidents: categoryParam === '事件事故',
       timePeriod: 'today',
-      duration: filters.duration,
-      tension: filters.tension,
-      tone: filters.tone,
-      keyword: keyword,
+      duration: 60,
+      tension: 'medium',
+      tone: filters.tone || 'フレンドリー',
+      keyword: keywordParam,
     };
     setFilters(trendingFilters);
     // URLパラメータをクリア（履歴を汚さない）
@@ -98,7 +99,7 @@ function HomeContent() {
     // 生成開始（フィルターオブジェクトを直接渡すためstale closureの影響なし）
     generateTopics(trendingFilters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [keywordParam, categoryParam]);
 
   // 生成完了後に結果セクションへ自動スクロール
   useEffect(() => {

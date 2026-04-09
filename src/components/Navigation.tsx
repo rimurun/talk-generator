@@ -55,6 +55,20 @@ export default function Navigation() {
   const pathname = usePathname();
   const { user, isConfigured, signOut } = useAuth();
 
+  // ゲストモード判定
+  const isGuest = !user;
+
+  // ログアウト / ゲストモード終了
+  const handleLogout = async () => {
+    if (user) {
+      await signOut();
+    }
+    // ゲストモードフラグをクリア
+    localStorage.removeItem('talkgen_guest_mode');
+    window.dispatchEvent(new CustomEvent('talkgen_guest_change'));
+    window.location.href = '/login';
+  };
+
   // セカンダリナビの折りたたみ状態
   const [isSecondaryOpen, setIsSecondaryOpen] = useState(true);
   // サイドバーのコンパクトモード（アイコンのみ）: localStorageで永続化
@@ -241,33 +255,33 @@ export default function Navigation() {
             </div>
           )}
 
-          {/* ユーザー情報（Supabase設定済みの場合のみ） */}
-          {isConfigured && (
-            <div className={`${isCompact ? 'px-2 pb-4' : 'px-3 pb-4'} border-t border-[var(--color-border)] pt-3`}>
-              {user ? (
-                // ログイン済み
-                <div className={`${isCompact ? '' : 'bg-[var(--color-bg)] rounded-lg p-2.5 space-y-1.5'}`}>
-                  {!isCompact && (
-                    <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                      <User size={13} aria-hidden="true" className="shrink-0 text-[var(--color-text-muted)]" />
-                      <span className="truncate">{user.email}</span>
-                    </div>
-                  )}
-                  <button
-                    onClick={() => signOut()}
-                    title={isCompact ? 'ログアウト' : undefined}
-                    aria-label={isCompact ? 'ログアウト' : undefined}
-                    className={`
-                      flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] hover:text-red-400 transition-colors
-                      ${isCompact ? 'justify-center w-full py-1' : ''}
-                    `}
-                  >
-                    <LogOut size={13} aria-hidden="true" />
-                    {!isCompact && 'ログアウト'}
-                  </button>
-                </div>
-              ) : (
-                // 未ログイン
+          {/* ユーザー情報 */}
+          <div className={`${isCompact ? 'px-2 pb-4' : 'px-3 pb-4'} border-t border-[var(--color-border)] pt-3`}>
+            {user ? (
+              // ログイン済み
+              <div className={`${isCompact ? '' : 'bg-[var(--color-bg)] rounded-lg p-2.5 space-y-1.5'}`}>
+                {!isCompact && (
+                  <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                    <User size={13} aria-hidden="true" className="shrink-0 text-[var(--color-text-muted)]" />
+                    <span className="truncate">{user.email}</span>
+                  </div>
+                )}
+                <button
+                  onClick={handleLogout}
+                  title={isCompact ? 'ログアウト' : undefined}
+                  aria-label={isCompact ? 'ログアウト' : undefined}
+                  className={`
+                    flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] hover:text-red-400 transition-colors
+                    ${isCompact ? 'justify-center w-full py-1' : ''}
+                  `}
+                >
+                  <LogOut size={13} aria-hidden="true" />
+                  {!isCompact && 'ログアウト'}
+                </button>
+              </div>
+            ) : (
+              // ゲストモード
+              <div className={`${isCompact ? '' : 'space-y-1.5'}`}>
                 <Link
                   href="/login"
                   title={isCompact ? 'ログイン' : undefined}
@@ -281,19 +295,32 @@ export default function Navigation() {
                   <LogIn size={14} aria-hidden="true" />
                   {!isCompact && 'ログイン / 登録'}
                 </Link>
-              )}
+                <button
+                  onClick={handleLogout}
+                  title={isCompact ? 'ゲスト終了' : undefined}
+                  aria-label={isCompact ? 'ゲスト終了' : undefined}
+                  className={`
+                    flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] hover:text-red-400 transition-colors
+                    px-2 py-1.5 rounded-lg hover:bg-white/5
+                    ${isCompact ? 'justify-center w-full' : ''}
+                  `}
+                >
+                  <LogOut size={13} aria-hidden="true" />
+                  {!isCompact && 'ゲストモードを終了'}
+                </button>
+              </div>
+            )}
 
-              {/* バージョン表記（展開時のみ） */}
-              {!isCompact && (
-                <div className="mt-2 px-1 text-xs text-[var(--color-text-muted)]">
-                  <Link href="/pricing" className="text-blue-500/70 hover:text-blue-400 transition-colors block mb-0.5">
-                    Pro プランを見る →
-                  </Link>
-                  <div>v2.0.0</div>
-                </div>
-              )}
-            </div>
-          )}
+            {/* バージョン表記（展開時のみ） */}
+            {!isCompact && (
+              <div className="mt-2 px-1 text-xs text-[var(--color-text-muted)]">
+                <Link href="/pricing" className="text-blue-500/70 hover:text-blue-400 transition-colors block mb-0.5">
+                  Pro プランを見る →
+                </Link>
+                <div>v2.0.0</div>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
 
@@ -356,6 +383,20 @@ export default function Navigation() {
                 </Link>
               );
             })}
+
+            {/* ログアウト / ゲスト終了ボタン */}
+            <button
+              onClick={handleLogout}
+              className="flex flex-col items-center justify-center flex-1 gap-0.5 relative"
+              aria-label={user ? 'ログアウト' : 'ゲスト終了'}
+            >
+              <span className="relative transition-all duration-200 text-[var(--color-text-muted)]">
+                <LogOut size={20} aria-hidden="true" />
+              </span>
+              <span className="text-[10px] leading-none font-medium text-[var(--color-text-muted)]">
+                {user ? 'ログアウト' : '終了'}
+              </span>
+            </button>
           </div>
         </div>
       </nav>

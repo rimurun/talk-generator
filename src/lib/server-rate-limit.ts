@@ -9,7 +9,7 @@ export const RATE_LIMITS: Record<string, { windowMs: number; maxRequests: number
   '/api/topics':   { windowMs: 60_000, maxRequests: 10, guestMaxRequests: 5 },
   '/api/script':   { windowMs: 60_000, maxRequests: 10, guestMaxRequests: 5 },
   '/api/batch':    { windowMs: 60_000, maxRequests: 3,  guestMaxRequests: 1 },
-  '/api/trending': { windowMs: 3_600_000, maxRequests: 6, guestMaxRequests: 2 },
+  '/api/trending': { windowMs: 3_600_000, maxRequests: 20, guestMaxRequests: 10 },
 };
 
 // インメモリフォールバック（Supabase未設定時 or エラー時）
