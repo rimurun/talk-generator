@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import dynamic from 'next/dynamic';
 import { FilterOptions, CategoryDetailFilter, Topic } from '@/types';
 import { categoryOptions } from '@/lib/mock-data';
 import { useTopics } from '@/hooks/useTopics';
@@ -15,9 +14,6 @@ import {
   DollarSign, AlertTriangle, Sparkles, Radio,
   Activity, Database, Settings
 } from 'lucide-react';
-
-// TopicDetailはSSR無効で遅延読み込み（TopicListと同じチャンク分割を維持）
-const TopicDetail = dynamic(() => import('@/components/TopicDetail'), { ssr: false });
 import { useAuth } from '@/components/AuthProvider';
 import OnboardingOverlay from '@/components/OnboardingOverlay';
 import GlitchText from '@/components/GlitchText';
@@ -225,21 +221,6 @@ function HomeContent() {
     if (progressStep.includes('バッチ生成完了'))    return 100;
     return 40;
   };
-
-  // ダイレクト台本生成モード（トレンドから直接遷移）
-  if (directTopic) {
-    return (
-      <div className="gradient-mesh-bg min-h-screen">
-        <div className="container mx-auto px-4 py-4 md:py-8 max-w-6xl">
-          <TopicDetail
-            topic={directTopic}
-            filters={filters}
-            onBack={() => setDirectTopic(null)}
-          />
-        </div>
-      </div>
-    );
-  }
 
   return (
     /* グラデーションメッシュ背景 */
@@ -461,13 +442,14 @@ function HomeContent() {
 
         {/* トピック一覧（スケルトン・結果・バッチ統計） */}
         <TopicListSection
-          topics={topics}
+          topics={directTopic ? [directTopic] : topics}
           loading={loading}
           filters={filters}
           batchMode={batchMode}
           resultsRef={resultsRef}
           onTopicSelect={() => setDetailMode(true)}
-          onBackToList={() => setDetailMode(false)}
+          onBackToList={() => { setDetailMode(false); setDirectTopic(null); }}
+          directTopic={directTopic}
         />
 
         {/* 初回ユーザー向けオンボーディング */}
