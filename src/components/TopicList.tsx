@@ -10,12 +10,10 @@ interface TopicListProps {
   filters: FilterOptions;
   onTopicSelect?: () => void;
   onBackToList?: () => void;
-  /** トレンドからのダイレクト台本生成：指定されたトピックを初回マウント時に自動選択 */
-  autoSelectTopic?: Topic;
 }
 
-export default function TopicList({ topics, filters, onTopicSelect, onBackToList, autoSelectTopic }: TopicListProps) {
-  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(autoSelectTopic || null);
+export default function TopicList({ topics, filters, onTopicSelect, onBackToList }: TopicListProps) {
+  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   // テレプロンプター直起動フラグ（TopicCard から起動した場合に true）
   const [launchTeleprompter, setLaunchTeleprompter] = useState(false);
 

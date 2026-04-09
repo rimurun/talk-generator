@@ -71,10 +71,8 @@ export function parseTrendingText(text: string): TrendingCategory[] {
         content.match(/^(.+?)[：:]\s+(.+)$/);
       if (sepMatch) {
         currentCategory.items.push({
-          // タイトルは50文字以内
           title: sepMatch[1].trim().slice(0, 50),
-          // 説明は60文字以内
-          description: sepMatch[2].trim().slice(0, 60),
+          description: sepMatch[2].trim().slice(0, 300),
         });
       } else {
         currentCategory.items.push({

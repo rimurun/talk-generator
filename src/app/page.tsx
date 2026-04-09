@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FilterOptions, CategoryDetailFilter, Topic } from '@/types';
+import { FilterOptions, CategoryDetailFilter } from '@/types';
 import { categoryOptions } from '@/lib/mock-data';
 import { useTopics } from '@/hooks/useTopics';
 import { storage } from '@/lib/storage';
@@ -33,8 +33,6 @@ function HomeContent() {
   const [showGuestLimitModal, setShowGuestLimitModal] = useState(false);
   // フィルターセクションの折りたたみ状態（全画面でデフォルト折りたたみ）
   const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
-  // トレンドからのダイレクト台本生成モード
-  const [directTopic, setDirectTopic] = useState<Topic | null>(null);
 
   // フィルターをモーダルで開くハンドラー（結果セクションからも使用）
   const scrollToFilterAndOpen = () => {
@@ -76,31 +74,14 @@ function HomeContent() {
   // カテゴリ詳細モーダル用：現在開いているカテゴリ名
   const [detailCategory, setDetailCategory] = useState<string | null>(null);
 
-  // トレンドページからのダイレクト台本生成 / キーワード検索
+  // トレンドページからのキーワード検索（後方互換）
   const trendingTriggered = useRef(false);
-  const modeParam = searchParams.get('mode');
   const keywordParam = searchParams.get('keyword');
   const categoryParam = searchParams.get('category');
   useEffect(() => {
     if (trendingTriggered.current) return;
-
-    // ダイレクト台本生成モード（トレンド項目クリック → 直接台本表示）
-    if (modeParam === 'direct') {
-      trendingTriggered.current = true;
-      router.replace('/', { scroll: false });
-      try {
-        const saved = localStorage.getItem('talkgen_direct_topic');
-        if (saved) {
-          localStorage.removeItem('talkgen_direct_topic');
-          const topic: Topic = JSON.parse(saved);
-          setDirectTopic(topic);
-        }
-      } catch { /* パースエラー無視 */ }
-      return;
-    }
-
-    // 従来のキーワード検索モード（後方互換）
     if (!keywordParam) return;
+
     trendingTriggered.current = true;
     const trendingFilters: FilterOptions = {
       categories: categoryParam ? [categoryParam] : [],
@@ -115,7 +96,7 @@ function HomeContent() {
     router.replace('/', { scroll: false });
     generateTopics(trendingFilters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modeParam, keywordParam, categoryParam]);
+  }, [keywordParam, categoryParam]);
 
   // 生成完了後に結果セクションへ自動スクロール
   useEffect(() => {
@@ -442,14 +423,13 @@ function HomeContent() {
 
         {/* トピック一覧（スケルトン・結果・バッチ統計） */}
         <TopicListSection
-          topics={directTopic ? [directTopic] : topics}
+          topics={topics}
           loading={loading}
           filters={filters}
           batchMode={batchMode}
           resultsRef={resultsRef}
           onTopicSelect={() => setDetailMode(true)}
-          onBackToList={() => { setDetailMode(false); setDirectTopic(null); }}
-          directTopic={directTopic}
+          onBackToList={() => setDetailMode(false)}
         />
 
         {/* 初回ユーザー向けオンボーディング */}

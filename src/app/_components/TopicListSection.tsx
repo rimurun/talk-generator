@@ -22,8 +22,6 @@ interface TopicListSectionProps {
   resultsRef: React.RefObject<HTMLDivElement | null>;
   onTopicSelect: () => void;
   onBackToList: () => void;
-  /** トレンドからのダイレクト台本生成用トピック */
-  directTopic?: Topic | null;
 }
 
 /** トピック一覧表示エリア（スケルトン・バッチ統計含む） */
@@ -35,7 +33,6 @@ export default function TopicListSection({
   resultsRef,
   onTopicSelect,
   onBackToList,
-  directTopic,
 }: TopicListSectionProps) {
   return (
     <>
@@ -54,7 +51,6 @@ export default function TopicListSection({
             filters={filters}
             onTopicSelect={onTopicSelect}
             onBackToList={onBackToList}
-            autoSelectTopic={directTopic || undefined}
           />
         )}
       </div>
