@@ -4,15 +4,16 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FilterOptions, CategoryDetailFilter } from '@/types';
+import { FilterOptions, CategoryDetailFilter, Topic } from '@/types';
 import { categoryOptions } from '@/lib/mock-data';
 import { useTopics } from '@/hooks/useTopics';
 import { storage } from '@/lib/storage';
 import { TopicListSkeleton } from '@/components/TopicCardSkeleton';
 import CategoryDetailModal from '@/components/CategoryDetailModal';
+import TopicDetail from '@/components/TopicDetail';
 import {
   DollarSign, AlertTriangle, Sparkles, Radio,
-  Activity, Database, Settings
+  Activity, Database, Settings, ArrowLeft
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import OnboardingOverlay from '@/components/OnboardingOverlay';
@@ -33,6 +34,8 @@ function HomeContent() {
   const [showGuestLimitModal, setShowGuestLimitModal] = useState(false);
   // フィルターセクションの折りたたみ状態（全画面でデフォルト折りたたみ）
   const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
+  // トレンドからのダイレクト台本生成モード
+  const [directTopic, setDirectTopic] = useState<Topic | null>(null);
 
   // フィルターをモーダルで開くハンドラー（結果セクションからも使用）
   const scrollToFilterAndOpen = () => {
@@ -74,15 +77,31 @@ function HomeContent() {
   // カテゴリ詳細モーダル用：現在開いているカテゴリ名
   const [detailCategory, setDetailCategory] = useState<string | null>(null);
 
-  // トレンドページからのキーワード自動生成
-  // searchParamsを依存配列に含め、クエリ変更時にも確実に検知する
+  // トレンドページからのダイレクト台本生成 / キーワード検索
   const trendingTriggered = useRef(false);
+  const modeParam = searchParams.get('mode');
   const keywordParam = searchParams.get('keyword');
   const categoryParam = searchParams.get('category');
   useEffect(() => {
     if (trendingTriggered.current) return;
-    if (!keywordParam) return;
 
+    // ダイレクト台本生成モード（トレンド項目クリック → 直接台本表示）
+    if (modeParam === 'direct') {
+      trendingTriggered.current = true;
+      router.replace('/', { scroll: false });
+      try {
+        const saved = localStorage.getItem('talkgen_direct_topic');
+        if (saved) {
+          localStorage.removeItem('talkgen_direct_topic');
+          const topic: Topic = JSON.parse(saved);
+          setDirectTopic(topic);
+        }
+      } catch { /* パースエラー無視 */ }
+      return;
+    }
+
+    // 従来のキーワード検索モード（後方互換）
+    if (!keywordParam) return;
     trendingTriggered.current = true;
     const trendingFilters: FilterOptions = {
       categories: categoryParam ? [categoryParam] : [],
@@ -94,12 +113,10 @@ function HomeContent() {
       keyword: keywordParam,
     };
     setFilters(trendingFilters);
-    // URLパラメータをクリア（履歴を汚さない）
     router.replace('/', { scroll: false });
-    // 生成開始（フィルターオブジェクトを直接渡すためstale closureの影響なし）
     generateTopics(trendingFilters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keywordParam, categoryParam]);
+  }, [modeParam, keywordParam, categoryParam]);
 
   // 生成完了後に結果セクションへ自動スクロール
   useEffect(() => {
@@ -205,6 +222,21 @@ function HomeContent() {
     if (progressStep.includes('バッチ生成完了'))    return 100;
     return 40;
   };
+
+  // ダイレクト台本生成モード（トレンドから直接遷移）
+  if (directTopic) {
+    return (
+      <div className="gradient-mesh-bg min-h-screen">
+        <div className="container mx-auto px-4 py-4 md:py-8 max-w-6xl">
+          <TopicDetail
+            topic={directTopic}
+            filters={filters}
+            onBack={() => setDirectTopic(null)}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     /* グラデーションメッシュ背景 */

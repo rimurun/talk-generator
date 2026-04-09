@@ -402,7 +402,7 @@ function CategoryCard({
   animationIndex,
 }: {
   category: TrendingCategory;
-  onItemClick: (itemTitle: string) => void;
+  onItemClick: (itemTitle: string, itemDescription?: string) => void;
   animationIndex: number;
 }) {
   const style = CATEGORY_STYLES[category.name] ?? {
@@ -447,7 +447,7 @@ function CategoryCard({
         {category.items.map((item, idx) => (
           <button
             key={idx}
-            onClick={() => onItemClick(item.title)}
+            onClick={() => onItemClick(item.title, item.description)}
             className="w-full text-left group/item rounded-lg px-2 py-2 transition-all duration-150 trending-item-btn"
             style={
               {
@@ -499,7 +499,7 @@ function CategoryCard({
       <button
         onClick={() => {
           const firstItem = category.items[0];
-          if (firstItem) onItemClick(firstItem.title);
+          if (firstItem) onItemClick(firstItem.title, firstItem.description);
         }}
         className="flex items-center justify-center gap-2 w-full py-2 px-4 rounded-lg text-xs font-medium transition-all duration-200 trending-secondary-btn"
         style={
@@ -624,14 +624,23 @@ export default function TrendingPage() {
     await fetchTrending();
   }, [lastRefreshTime, fetchTrending]);
 
-  // 台本生成ページへ遷移
+  // トレンド項目から直接台本生成へ遷移
   const handleGenerateScript = useCallback(
-    (categoryName: string, itemTitle: string) => {
-      const params = new URLSearchParams({
+    (categoryName: string, itemTitle: string, itemDescription?: string) => {
+      // 同一タイトルには安定したIDを振る（キャッシュヒット用）
+      const stableId = `trending-${itemTitle.slice(0, 30).replace(/\s+/g, '-')}`;
+      const topic = {
+        id: stableId,
+        title: itemTitle.slice(0, 50),
         category: categoryName,
-        keyword: itemTitle,
-      });
-      router.push(`/?${params.toString()}`);
+        summary: itemDescription || itemTitle,
+        sensitivityLevel: categoryName === '事件事故' ? 3 : 1,
+        riskLevel: categoryName === '事件事故' ? 'high' : 'low',
+        sourceUrl: '',
+        createdAt: new Date().toISOString(),
+      };
+      localStorage.setItem('talkgen_direct_topic', JSON.stringify(topic));
+      router.push('/?mode=direct');
     },
     [router],
   );
@@ -865,7 +874,7 @@ export default function TrendingPage() {
                 item={spotlightItem}
                 categoryName={spotlightCategory.name}
                 onGenerate={() =>
-                  handleGenerateScript(spotlightCategory.name, spotlightItem.title)
+                  handleGenerateScript(spotlightCategory.name, spotlightItem.title, spotlightItem.description)
                 }
               />
             )}
@@ -953,8 +962,8 @@ export default function TrendingPage() {
                     key={category.name}
                     category={category}
                     animationIndex={idx}
-                    onItemClick={itemTitle =>
-                      handleGenerateScript(category.name, itemTitle)
+                    onItemClick={(itemTitle, itemDescription) =>
+                      handleGenerateScript(category.name, itemTitle, itemDescription)
                     }
                   />
                 ))}
