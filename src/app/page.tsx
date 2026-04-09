@@ -4,17 +4,20 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { FilterOptions, CategoryDetailFilter, Topic } from '@/types';
 import { categoryOptions } from '@/lib/mock-data';
 import { useTopics } from '@/hooks/useTopics';
 import { storage } from '@/lib/storage';
 import { TopicListSkeleton } from '@/components/TopicCardSkeleton';
 import CategoryDetailModal from '@/components/CategoryDetailModal';
-import TopicDetail from '@/components/TopicDetail';
 import {
   DollarSign, AlertTriangle, Sparkles, Radio,
-  Activity, Database, Settings, ArrowLeft
+  Activity, Database, Settings
 } from 'lucide-react';
+
+// TopicDetailはSSR無効で遅延読み込み（TopicListと同じチャンク分割を維持）
+const TopicDetail = dynamic(() => import('@/components/TopicDetail'), { ssr: false });
 import { useAuth } from '@/components/AuthProvider';
 import OnboardingOverlay from '@/components/OnboardingOverlay';
 import GlitchText from '@/components/GlitchText';
