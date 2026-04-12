@@ -93,7 +93,8 @@ function HomeContent() {
       keyword: keywordParam,
     };
     setFilters(trendingFilters);
-    router.replace('/', { scroll: false });
+    // URLパラメータ削除は生成開始後に遅延実行（ナビゲーション競合回避）
+    setTimeout(() => router.replace('/', { scroll: false }), 100);
     generateTopics(trendingFilters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keywordParam, categoryParam]);

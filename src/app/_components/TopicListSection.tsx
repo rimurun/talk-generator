@@ -7,10 +7,7 @@ import { Sparkles, CheckCircle2 } from 'lucide-react';
 
 // 動的インポート（First Load JS削減）
 const TopicList = dynamic(() => import('@/components/TopicList'), {
-  loading: () => {
-    const { TopicListSkeleton } = require('@/components/TopicCardSkeleton');
-    return <TopicListSkeleton />;
-  }
+  loading: () => <TopicListSkeleton />
 });
 
 interface TopicListSectionProps {
