@@ -635,15 +635,15 @@ export default function TrendingPage() {
     [],
   );
 
-  // 詳細モーダルから台本生成へ遷移
+  // 詳細モーダルから台本生成へ遷移（フルページロードでwebpackチャンク競合を回避）
   const handleGenerateFromDetail = useCallback(() => {
     if (!detailItem) return;
     const params = new URLSearchParams({
       category: detailItem.category,
       keyword: detailItem.title,
     });
-    router.push(`/?${params.toString()}`);
-  }, [router, detailItem]);
+    window.location.href = `/?${params.toString()}`;
+  }, [detailItem]);
 
   // カテゴリを表示順で並び替え
   const sortedCategories = CATEGORY_ORDER.map(name =>

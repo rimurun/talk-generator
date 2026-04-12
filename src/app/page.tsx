@@ -93,8 +93,8 @@ function HomeContent() {
       keyword: keywordParam,
     };
     setFilters(trendingFilters);
-    // URLパラメータ削除は生成開始後に遅延実行（ナビゲーション競合回避）
-    setTimeout(() => router.replace('/', { scroll: false }), 100);
+    // フルページロードで遷移するためURLパラメータは自然に消化済み
+    router.replace('/', { scroll: false });
     generateTopics(trendingFilters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keywordParam, categoryParam]);
