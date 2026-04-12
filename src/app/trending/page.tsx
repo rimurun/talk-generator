@@ -624,26 +624,17 @@ export default function TrendingPage() {
     await fetchTrending();
   }, [lastRefreshTime, fetchTrending]);
 
-  // 詳細モーダル用ステート
-  const [detailItem, setDetailItem] = useState<{ title: string; description: string; category: string } | null>(null);
-
-  // トレンド項目クリック → 詳細モーダルを表示
+  // トレンド項目クリック → ホームへ遷移して即座に生成開始
   const handleItemClick = useCallback(
-    (categoryName: string, itemTitle: string, itemDescription?: string) => {
-      setDetailItem({ title: itemTitle, description: itemDescription || '', category: categoryName });
+    (categoryName: string, itemTitle: string, _itemDescription?: string) => {
+      const params = new URLSearchParams({
+        category: categoryName,
+        keyword: itemTitle,
+      });
+      window.location.href = `/?${params.toString()}`;
     },
     [],
   );
-
-  // 詳細モーダルから台本生成へ遷移（フルページロードでwebpackチャンク競合を回避）
-  const handleGenerateFromDetail = useCallback(() => {
-    if (!detailItem) return;
-    const params = new URLSearchParams({
-      category: detailItem.category,
-      keyword: detailItem.title,
-    });
-    window.location.href = `/?${params.toString()}`;
-  }, [detailItem]);
 
   // カテゴリを表示順で並び替え
   const sortedCategories = CATEGORY_ORDER.map(name =>
@@ -1012,71 +1003,6 @@ export default function TrendingPage() {
         )}
       </div>
 
-      {/* トレンド詳細モーダル */}
-      {detailItem && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
-          onClick={() => setDetailItem(null)}
-        >
-          <div
-            className="glass-card-heavy rounded-2xl p-6 md:p-8 max-w-lg w-full max-h-[80vh] overflow-y-auto"
-            style={{ boxShadow: '0 24px 80px rgba(0,0,0,0.7), 0 0 40px rgba(0,212,255,0.1)' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* カテゴリバッジ */}
-            <div className="flex items-center gap-2 mb-4">
-              <span
-                className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold"
-                style={{
-                  background: (CATEGORY_STYLES[detailItem.category]?.hexColor ?? '#808080') + '18',
-                  color: CATEGORY_STYLES[detailItem.category]?.hexColor ?? '#808080',
-                  border: `1px solid ${(CATEGORY_STYLES[detailItem.category]?.hexColor ?? '#808080')}50`,
-                }}
-              >
-                {detailItem.category}
-              </span>
-            </div>
-
-            {/* タイトル */}
-            <h2 className="text-xl md:text-2xl font-bold text-white mb-4 leading-tight">
-              {detailItem.title}
-            </h2>
-
-            {/* 説明文 */}
-            {detailItem.description ? (
-              <p className="text-sm md:text-base text-white/70 leading-relaxed mb-6 whitespace-pre-wrap">
-                {detailItem.description}
-              </p>
-            ) : (
-              <p className="text-sm text-white/40 mb-6">
-                詳細情報はありません。台本を生成すると、AIがこの話題について詳しく調べます。
-              </p>
-            )}
-
-            {/* アクションボタン */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={handleGenerateFromDetail}
-                className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold text-sm text-black transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
-                style={{
-                  background: `linear-gradient(135deg, ${CATEGORY_STYLES[detailItem.category]?.gradFrom ?? '#00d4ff'}, ${CATEGORY_STYLES[detailItem.category]?.gradTo ?? '#0066ff'})`,
-                  boxShadow: `0 0 20px ${(CATEGORY_STYLES[detailItem.category]?.hexColor ?? '#00d4ff')}40`,
-                }}
-              >
-                <Zap size={15} />
-                この話題で台本を生成
-              </button>
-              <button
-                onClick={() => setDetailItem(null)}
-                className="px-5 py-3 rounded-xl text-sm text-white/60 hover:text-white hover:bg-white/5 transition-all"
-                style={{ border: '1px solid rgba(255,255,255,0.1)' }}
-              >
-                閉じる
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
