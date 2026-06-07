@@ -53,11 +53,5 @@
       "main": true,
       "master": true
     }
-  },
-  "crons": [
-    {
-      "path": "/api/cron/prefetch",
-      "schedule": "0 13 * * *"
-    }
-  ]
+  }
 }
